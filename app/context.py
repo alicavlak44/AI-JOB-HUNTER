@@ -165,6 +165,50 @@ def out_dir(kind, slug=None):
     return d
 
 
+# ---------------------------------------------------------------- soru hafızası (kullanıcının KENDİ cevapları)
+def norm_q(q):
+    """Soru metnini karşılaştırılabilir hale getirir (büyük/küçük harf, yıldız, boşluk, noktalama)."""
+    q = (q or "").replace("İ", "i").replace("I", "ı").lower()
+    q = re.sub(r"[*?:.!()\[\]\"'’]", " ", q)
+    return re.sub(r"\s+", " ", q).strip()
+
+
+def qa(slug=None):
+    """{normalize soru: cevap} — sadece kullanıcının verdiği cevaplar."""
+    return {k: v for k, v in (user(slug).get("qa") or {}).items() if str(v).strip()}
+
+
+def set_answers(answers: dict, slug=None):
+    """answers: {soru metni: cevap}. Boş cevap = soruyu hafızadan sil."""
+    slug = slug or current()
+    users = load_users()
+    q = dict(users[slug].get("qa") or {})
+    for k, v in answers.items():
+        k = norm_q(k)
+        if str(v).strip():
+            q[k] = str(v).strip()
+        else:
+            q.pop(k, None)
+    users[slug]["qa"] = q
+    pend = [p for p in users[slug].get("qa_pending", []) if norm_q(p) not in q]
+    users[slug]["qa_pending"] = pend
+    save_users(users)
+
+
+def add_pending_questions(questions, slug=None):
+    """Botun cevabını bilmediği için durduğu soruları kullanıcıya sorulmak üzere kaydeder."""
+    slug = slug or current()
+    users = load_users()
+    known = set((users[slug].get("qa") or {}))
+    pend = list(users[slug].get("qa_pending") or [])
+    for q in questions:
+        q = (q or "").strip().rstrip("*").strip()
+        if q and norm_q(q) not in known and norm_q(q) not in {norm_q(p) for p in pend}:
+            pend.append(q)
+    users[slug]["qa_pending"] = pend[-100:]
+    save_users(users)
+
+
 def field(slug=None):
     return user(slug).get("field", "genel")
 

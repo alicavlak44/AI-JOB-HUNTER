@@ -127,5 +127,26 @@ class HRFalsePositiveTests(unittest.TestCase):
         self.assertTrue(is_relevant("Eğitim Koordinatörü", "İnsan Kaynakları Uzmanı", "ik"))
 
 
+class QuestionMemoryTests(UsersTests):
+    def test_answers_and_pending(self):
+        context.load_users()
+        context.add_pending_questions(["Do you have a basic understanding of networking?*", "Kaç yıl PowerShell?"])
+        self.assertEqual(len(context.user()["qa_pending"]), 2)
+        context.set_answers({"Do you have a basic understanding of networking?": "Yes"})
+        self.assertEqual(context.qa(), {"do you have a basic understanding of networking": "Yes"})
+        self.assertEqual(context.user()["qa_pending"], ["Kaç yıl PowerShell?"])  # cevaplanan bekleyenlerden düşer
+        context.add_pending_questions(["Do you have a basic understanding of networking?"])  # bilinen tekrar eklenmez
+        self.assertEqual(len(context.user()["qa_pending"]), 1)
+
+    def test_lookup_and_options(self):
+        from browser.automator import qa_lookup, pick_option
+        qa = {context.norm_q("Are you willing to participate in periodic on-call duty as part of the team?"): "Yes"}
+        self.assertEqual(qa_lookup("Are you willing to participate in periodic on-call duty as part of the team?*", qa), "Yes")
+        self.assertIsNone(qa_lookup("Are you willing to relocate?", qa))  # bilinmeyen soru → None (uydurma yok)
+        self.assertEqual(pick_option("Evet", [{"i": 0, "text": "Yes"}, {"i": 1, "text": "No"}]), 0)
+        self.assertEqual(pick_option("No", [{"i": 0, "text": "Evet"}, {"i": 1, "text": "Hayır"}]), 1)
+        self.assertIsNone(pick_option("Belki", [{"i": 0, "text": "Yes"}, {"i": 1, "text": "No"}]))
+
+
 if __name__ == "__main__":
     unittest.main()

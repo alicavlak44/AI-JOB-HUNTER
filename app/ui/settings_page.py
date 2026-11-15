@@ -53,6 +53,27 @@ def page_settings():
             st.session_state.pop(f"positions_{context.current()}", None)
             st.success("Kaydedildi.")
 
+    st.subheader("🧠 Soru hafızası")
+    st.caption("Başvuru formlarında çıkan soruların SİZİN cevaplarınız. Bot aynı soruyu gördüğünde bunu kullanır "
+               "(Evet/Hayır, liste ve metin). Bot cevabını bilmediği soruda durur ve soruyu buraya ekler.")
+    uq = context.user()
+    pending = [q for q in uq.get("qa_pending", []) if context.norm_q(q) not in (uq.get("qa") or {})]
+    rows = [{"Soru": q, "Cevabınız": ""} for q in pending] + \
+           [{"Soru": q, "Cevabınız": a} for q, a in (uq.get("qa") or {}).items()]
+    if pending:
+        st.warning(f"⏸️ {len(pending)} soru cevabınızı bekliyor (tablonun başında, cevap sütunu boş).")
+    if rows:
+        edited = st.data_editor(pd.DataFrame(rows), hide_index=True, width="stretch", num_rows="dynamic",
+                                key=f"qa_{context.current()}", disabled=["Soru"] if pending else [],
+                                column_config={"Soru": st.column_config.TextColumn(width="large"),
+                                               "Cevabınız": st.column_config.TextColumn(help="Evet/Hayır sorusunda: Yes/No veya Evet/Hayır")})
+        if st.button("💾 Cevapları kaydet", type="primary"):
+            context.set_answers({r["Soru"]: r["Cevabınız"] or "" for r in edited.to_dict("records") if r.get("Soru")})
+            st.success("Kaydedildi; bot sonraki başvurularda kullanacak.")
+            st.rerun()
+    else:
+        st.caption("Henüz kayıtlı soru yok.")
+
     st.subheader("🛡️ Hesap koruması")
     rows = []
     for plat in ("LinkedIn", "Kariyer.net"):

@@ -24,7 +24,7 @@ from app import context as ctx  # "context" adı Playwright tarayıcı bağlamı
 
 log = get_logger("automator")
 
-APPLY_BUTTON_TEXTS = ["Kolay Başvuru", "Easy Apply", "Hemen Başvur", "Başvur", "Apply"]
+APPLY_BUTTON_TEXTS = ["Kolay Başvuru", "Easy Apply", "Başvuruya devam", "Continue applying", "Hemen Başvur", "Başvur", "Apply"]
 NEXT_BUTTON_TEXTS = ["İleri", "Devam Et", "Next", "Continue", "İncele", "Review"]
 SUBMIT_BUTTON_TEXTS = ["Başvuruyu Gönder", "Gönder", "Submit application", "Submit"]
 MAX_FORM_STEPS = 8
@@ -453,16 +453,108 @@ _FIELDS_JS = """() => {
 }"""
 
 
+def qa_lookup(question, qa=None):
+    """Soru hafızasında bu sorunun KULLANICI cevabı var mı? (birebir ya da etiket fazladan metin içeriyorsa kapsama)"""
+    qa = ctx.qa() if qa is None else qa
+    n = ctx.norm_q(question)
+    if not n:
+        return None
+    if n in qa:
+        return qa[n]
+    for k, v in qa.items():
+        if len(k) >= 20 and (k in n or n in k):
+            return v
+    return None
+
+
+_CHOICES_JS = """() => {
+    document.querySelectorAll('[data-ko-choice]').forEach(e => e.removeAttribute('data-ko-choice'));
+    const out = []; let g = 0;
+    for (const fs of document.querySelectorAll('fieldset')) {
+        const radios = [...fs.querySelectorAll('input[type=radio]')];
+        if (!radios.length || fs.offsetParent === null || radios.some(r => r.checked)) continue;
+        const q = (fs.querySelector('legend')?.innerText || '').split('\\n')[0].trim();
+        const opts = radios.map((r, i) => {
+            const l = r.id ? document.querySelector(`label[for="${CSS.escape(r.id)}"]`) : null;
+            r.setAttribute('data-ko-choice', g + '_' + i);
+            return {i, text: ((l && l.innerText) || r.value || '').trim()};
+        });
+        out.push({g, q, kind: 'radio', opts}); g++;
+    }
+    for (const sel of document.querySelectorAll('select')) {
+        if (sel.offsetParent === null) continue;
+        const cur = sel.options[sel.selectedIndex];
+        if (sel.selectedIndex > 0 && cur && !/seç|select/i.test(cur.text)) continue;
+        const l = sel.id ? document.querySelector(`label[for="${CSS.escape(sel.id)}"]`) : null;
+        sel.setAttribute('data-ko-choice', 's' + g);
+        out.push({g, q: ((l && l.innerText) || sel.getAttribute('aria-label') || '').split('\\n')[0].trim(),
+                  kind: 'select', opts: [...sel.options].map((o, i) => ({i, text: o.text.trim()}))});
+        g++;
+    }
+    return out;
+}"""
+
+
+def pick_option(answer, options):
+    """Kullanıcının cevabına karşılık gelen seçenek (Yes/Evet eşdeğerliği dahil); yoksa None."""
+    syn = {"yes": {"yes", "evet"}, "evet": {"yes", "evet"}, "no": {"no", "hayır", "hayir"},
+           "hayır": {"no", "hayır", "hayir"}, "hayir": {"no", "hayır", "hayir"}}
+    a = ctx.norm_q(answer)
+    accept = syn.get(a, {a})
+    for o in options:
+        if ctx.norm_q(o["text"]) in accept:
+            return o["i"]
+    for o in options:  # "3 yıl" ↔ "3" gibi
+        t = ctx.norm_q(o["text"])
+        if t and (t.startswith(a) or a.startswith(t)) and len(a) > 0:
+            return o["i"]
+    return None
+
+
+def fill_choice_questions(page, qa=None):
+    """Evet/Hayır (radio) ve açılır liste sorularını SOru hafızasındaki kullanıcı cevabıyla doldurur."""
+    filled = []
+    try:
+        groups = page.evaluate(_CHOICES_JS)
+    except PlaywrightError:
+        return filled
+    for grp in groups:
+        ans = qa_lookup(grp["q"], qa)
+        if ans is None:
+            continue
+        i = pick_option(ans, grp["opts"])
+        if i is None:
+            log.warning("Soru hafızasındaki cevap seçeneklerde yok: %s → %s", grp["q"][:60], ans)
+            continue
+        try:
+            if grp["kind"] == "radio":
+                page.locator(f'[data-ko-choice="{grp["g"]}_{i}"]').first.check(force=True, timeout=3000)
+            else:
+                page.locator(f'[data-ko-choice="s{grp["g"]}"]').first.select_option(index=i, timeout=3000)
+            filled.append(grp["q"][:60])
+            guard.human_pause(0.4, 1.0)
+        except PlaywrightError:
+            log.warning("Seçim yapılamadı: %s", grp["q"][:60])
+    if filled:
+        log.info("Soru hafızasıyla cevaplanan seçimler: %s", filled)
+    return filled
+
+
 def fill_known_fields(page, answers):
     """Formdaki BOŞ alanlardan CV'de cevabı olanları doldurur. Doldurulan alan etiketlerini döndürür."""
     from ai_engine.form_answers import answer_for
     filled = []
+    qa = ctx.qa()
     try:
         fields = page.evaluate(_FIELDS_JS)
     except PlaywrightError:
         return filled
     for f in fields:
-        value = answer_for(f["label"], f["type"], answers)
+        value = qa_lookup(f["label"], qa)  # önce kullanıcının bu soruya verdiği cevap
+        if value is not None and f["type"] == "number":
+            value = re.sub(r"[^\d.,]", "", value) or None
+        if value is None:
+            value = answer_for(f["label"], f["type"], answers)
         if value is None:
             continue
         try:
@@ -558,8 +650,10 @@ def run_application_bot(job_id, job_url, mode="yari", cv_path=None, wait_user_ms
                     if not uploaded:
                         uploaded = try_upload_cv(page, cv_path, fallback)
                     fill_known_fields(page, answers)
+                    fill_choice_questions(page)
                     empty = _empty_required_fields(page)
                     if empty:
+                        ctx.add_pending_questions(empty)
                         _screenshot(page, f"job{job_id}_needs_input")
                         msg = ("Cevabınızı bekleyen soru: " + "; ".join(empty) +
                                ". (Profil ve Ayarlar → 'Form cevaplarım'a eklerseniz bot sonraki başvurularda kullanır. "
@@ -583,6 +677,7 @@ def run_application_bot(job_id, job_url, mode="yari", cv_path=None, wait_user_ms
                         return _human_check_result(page, job_id, mode, context, sign)
                     questions = _validation_questions(page)
                     if questions:  # 'İleri' formu geçirmedi: cevaplanmamış (Evet/Hayır vb.) sorular var
+                        ctx.add_pending_questions(questions)
                         _screenshot(page, f"job{job_id}_needs_input")
                         msg = ("Cevabınızı bekleyen soru(lar): " + "; ".join(questions) +
                                ". Bot Evet/Hayır sorularını sizin yerinize cevaplamaz. LinkedIn yarım başvuruyu "
