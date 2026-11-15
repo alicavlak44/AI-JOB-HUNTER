@@ -19,7 +19,18 @@ def tr_lower(s):
     return (s or "").replace("I", "ı").replace("İ", "i").lower()
 
 
-def is_blacklisted(title):
+def _field(field=None):
+    if field:
+        return field
+    from app import context
+    return context.field()
+
+
+def is_blacklisted(title, field=None):
+    """BT dışı ilan kara listesi SADECE Bilgi Teknolojileri kullanıcıları için (İK arayan birinin
+    'İnsan Kaynakları Uzmanı' ilanı elenmesin)."""
+    if _field(field) != "it":
+        return False
     t_low = tr_lower(title)
     return any(bad in t_low for bad in BLACKLIST_KEYWORDS)
 
@@ -40,16 +51,29 @@ IT_TERMS = [
     "developer", "geliştirici", "web",
 ]
 _IT_RE = re.compile(r"(?<![\wçğıöşü])(?:" + "|".join(IT_TERMS) + r")(?:[\wçğıöşü]*)", re.IGNORECASE)
+# İnsan Kaynakları alanı: unvanda bunlardan biri varsa ilan İK ile ilgili sayılır
+HR_TERMS = [
+    "insan kaynak", "ik", "human resource", "hr", "hrbp", "bordro", "özlük", "işe alım", "recruit", "talent",
+    "yetenek", "people", "personel", "ücret", "yan hak", "compensation", "payroll", "eğitim ve gelişim",
+    "organizasyonel gelişim", "performans", "çalışan deneyimi", "employee experience", "kurumsal iletişim",
+]
+_HR_RE = re.compile(r"(?<![\wçğıöşü])(?:" + "|".join(HR_TERMS) + r")(?:[\wçğıöşü]*)", re.IGNORECASE)
+_FIELD_RE = {"it": _IT_RE, "ik": _HR_RE}
 
 
-def is_relevant(title, keyword):
-    """İlan unvanı aranan pozisyonla veya genel olarak IT ile ilgili mi?
+def is_relevant(title, keyword, field=None):
+    """İlan unvanı aranan pozisyonla (BT kullanıcısında genel olarak BT ile) ilgili mi?
     Kariyer.net araması gevşek: 'Bilgi İşlem Uzmanı' aramasına 'Dış Ticaret Uzmanı' da dönüyor."""
     t = tr_lower(title)
-    core = " ".join(w for w in tr_lower(keyword).split() if w not in GENERIC_TITLE_WORDS)
+    core_words = [w for w in tr_lower(keyword).split() if w not in GENERIC_TITLE_WORDS]
+    core = " ".join(core_words)
     if core and core in t:
         return True
-    return bool(_IT_RE.search(t))
+    field_re = _FIELD_RE.get(_field(field))
+    if field_re is not None:
+        return bool(field_re.search(t))
+    # diğer alanlar: aranan unvanın anlamlı kelimelerinden biri (ör. 'insan', 'kaynakları', 'bordro') geçmeli
+    return any(len(w) > 3 and re.search(rf"(?<![\wçğıöşü]){re.escape(w)}", t) for w in core_words)
 
 
 def filter_title(title, keyword, stats):

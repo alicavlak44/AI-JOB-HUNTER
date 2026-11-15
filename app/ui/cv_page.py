@@ -8,19 +8,8 @@ import streamlit as st
 
 from ai_engine import cv_studio as cs
 from ai_engine.brain import AIError
-from app.settings import CV_PATH
+from app import context
 from app.ui.common import header, step, show_flash, set_flash
-
-
-def _pick_profile():
-    profiles = cs.list_profiles()
-    c1, c2 = st.columns([2, 1])
-    choice = c1.selectbox("Kişi", profiles + ["➕ Yeni kişi"], index=0 if profiles else 0,
-                          help="Her kişinin CV verisi ayrı klasörde (profiles/) saklanır.")
-    if choice == "➕ Yeni kişi":
-        name = c2.text_input("Ad Soyad")
-        return (cs.slugify(name), True) if name else (None, True)
-    return choice, False
 
 
 def _import(slug):
@@ -34,9 +23,12 @@ def _import(slug):
                                     f"{sum(len(g['items']) for g in p['skills'])} beceri." +
                   ("  \n⚠️ " + "  \n⚠️ ".join(p["_warnings"]) if p.get("_warnings") else ""))
         st.rerun()
-    if os.path.exists(CV_PATH) and c2.button("📄 Sistemdeki CV'mi kullan (documents/Cv.pdf)", width="stretch"):
-        text = cs.fix_pdf_artifacts(cs.extract_text(open(CV_PATH, "rb").read(), CV_PATH))
-        cs.save_profile(slug, cs.profile_from_text(text), text)
+    main_cv = context.cv_path()
+    if os.path.exists(main_cv) and c2.button("📄 Kayıtlı CV'mi kullan", width="stretch"):
+        text = cs.fix_pdf_artifacts(cs.extract_text(open(main_cv, "rb").read(), main_cv))
+        p = cs.profile_from_text(text)
+        p["name"] = p["name"] or context.name()
+        cs.save_profile(slug, p, text)
         set_flash("cv", "success", "✅ Sistemdeki CV içe aktarıldı.")
         st.rerun()
     c2.caption("LinkedIn / Kariyer.net'ten içe aktarma: profilinizin PDF'ini indirip (LinkedIn → Profil → "
@@ -130,19 +122,21 @@ def _render(slug, p):
         st.rerun()
     out = st.session_state.get(f"out_{slug}")
     if out:
-        d1, d2 = st.columns(2)
+        d1, d2, d3 = st.columns(3)
         d1.download_button("📄 PDF indir", open(out["pdf"], "rb").read(), file_name=os.path.basename(out["pdf"]), mime="application/pdf")
         if out.get("docx"):
             d2.download_button("📝 Word indir (ATS)", open(out["docx"], "rb").read(), file_name=os.path.basename(out["docx"]))
+        if d3.button("⭐ Bu CV'yi başvurularda kullan", help="İlan analizi ve başvurularda bu PDF kullanılır"):
+            import shutil
+            shutil.copyfile(out["pdf"], os.path.join(context.user_dir(), "cv.pdf"))
+            set_flash("cv", "success", "✅ Artık analiz ve başvurularda bu CV kullanılıyor.")
+            st.rerun()
 
 
 def page_cv():
     header("📄 CV Stüdyosu", "CV'nizi yükleyin, düzenleyin, yapay zekayla güçlendirin, 4 şablondan birini seçip indirin.")
     show_flash("cv")
-    slug, is_new = _pick_profile()
-    if not slug:
-        st.info("Yeni kişi için ad soyad yazın.")
-        return
+    slug = context.current()  # herkes sadece kendi CV'sini görür
     exists = slug in cs.list_profiles()
 
     step("1️⃣ Kaynak")

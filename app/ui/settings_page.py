@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from ai_engine.brain import check_lm_studio
-from app import guard, settings
+from app import context, guard, settings
 from app.logger import read_recent_logs
 from app.ui.common import header
 from database.db_manager import reset_database
@@ -15,16 +15,40 @@ def page_settings():
     header("⚙️ Ayarlar", "Sistem durumu, koruma limitleri ve bakım.")
     ok, msg = check_lm_studio()
     (st.success if ok else st.error)(f"🧠 Yapay zeka (LM Studio): {msg} · model: {settings.LM_MODEL}")
-    (st.success if os.path.exists(settings.CV_PATH) else st.error)(
-        f"📄 CV: {os.path.basename(settings.CV_PATH) if os.path.exists(settings.CV_PATH) else 'bulunamadı (documents/Cv.pdf)'}")
+    cv = context.cv_path()
+    (st.success if os.path.exists(cv) else st.error)(
+        f"📄 Ana CV: {os.path.relpath(cv, settings.BASE_DIR) if os.path.exists(cv) else 'yok — aşağıdan yükleyin'}")
+
+    st.subheader("👤 Profilim")
+    u = context.user()
+    with st.form("profil"):
+        c1, c2, c3 = st.columns(3)
+        name = c1.text_input("Ad Soyad", u["name"])
+        field = c2.selectbox("Alan", list(context.FIELDS), index=list(context.FIELDS).index(u.get("field", "genel")),
+                             format_func=context.FIELDS.get)
+        city = c3.text_input("Şehir", u.get("city", ""))
+        targets = st.text_area("Aranacak pozisyonlar (her satır bir unvan)", "\n".join(u.get("targets", [])))
+        new_pin = st.text_input("Yeni PIN (boş bırakırsanız değişmez; '-' yazarsanız PIN kaldırılır)", type="password")
+        new_cv = st.file_uploader("Ana CV'yi değiştir (PDF)", type=["pdf"])
+        if st.form_submit_button("Kaydet", type="primary"):
+            upd = dict(name=name.strip() or u["name"], field=field, city=city,
+                       targets=[t.strip() for t in targets.splitlines() if t.strip()])
+            if new_pin:
+                upd["pin"] = None if new_pin == "-" else new_pin
+            context.update_user(context.current(), **upd)
+            if new_cv:
+                with open(os.path.join(context.user_dir(), "cv.pdf"), "wb") as f:
+                    f.write(new_cv.getvalue())
+            st.session_state.pop(f"positions_{context.current()}", None)
+            st.success("Kaydedildi.")
 
     st.subheader("🛡️ Hesap koruması")
     rows = []
     for plat in ("LinkedIn", "Kariyer.net"):
         g = guard.status(plat)
-        for name, v in g.items():
-            if name != "engel":
-                rows.append({"Platform": plat, "İşlem": name, "Bugün": v["bugün"], "Bu hafta": v["hafta"]})
+        for act, v in g.items():
+            if act != "engel":
+                rows.append({"Platform": plat, "İşlem": act, "Bugün": v["bugün"], "Bu hafta": v["hafta"]})
         if g["engel"]:
             st.error(f"{plat}: {g['engel']}")
     st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")

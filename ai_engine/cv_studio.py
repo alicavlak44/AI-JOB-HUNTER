@@ -35,8 +35,8 @@ CITIES = ["Ankara", "İstanbul", "İzmir", "Bursa", "Antalya", "Konya", "Eskişe
 
 # ---------------------------------------------------------------- yardımcılar
 def slugify(name):
-    s = (name or "profil").strip().lower()
-    s = s.translate(str.maketrans("çğıöşüâîİ", "cgiosuaii"))
+    s = (name or "profil").strip().replace("İ", "i").replace("I", "ı").lower()
+    s = s.translate(str.maketrans("çğıöşüâî", "cgiosuai"))
     return re.sub(r"[^a-z0-9]+", "-", s).strip("-") or "profil"
 
 

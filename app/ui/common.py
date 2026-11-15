@@ -6,7 +6,7 @@ CSS = """
 /* Daha sade görünüm: kart benzeri metrikler, sıkı boşluklar */
 div[data-testid="stMetric"] {background: var(--secondary-background-color); border-radius: 12px; padding: 12px 16px;}
 div[data-testid="stMetricLabel"] p {font-size: 0.85rem; opacity: 0.8;}
-.block-container {padding-top: 2rem; max-width: 1200px;}
+.block-container {padding-top: 4.2rem; max-width: 1200px;}
 .ko-sub {opacity: 0.75; margin-top: -0.6rem; margin-bottom: 1rem;}
 .ko-step {font-weight: 600; margin: 0.6rem 0 0.2rem;}
 </style>

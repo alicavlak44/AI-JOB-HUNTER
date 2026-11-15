@@ -13,13 +13,14 @@ from playwright.sync_api import sync_playwright, Error as PlaywrightError, Timeo
 
 from app.logger import get_logger
 from app.settings import (
-    CHROME_PROFILE, BROWSER_ARGS, CV_PATH, JOB_DESC_MAX_CHARS, SCREENSHOTS_DIR,
+    BROWSER_ARGS, JOB_DESC_MAX_CHARS, SCREENSHOTS_DIR,
     APPLY_CONFIRMATION_TEXTS, ALREADY_APPLIED_TEXTS, STATUS_AT_APPLY_SCREEN, STATUS_APPLIED_VERIFIED,
     STATUS_APPLY_UNVERIFIED, STATUS_APPLY_FAILED,
 )
 from database.db_manager import insert_job, update_job_status
 from browser.scraper import filter_title, new_stats, tr_lower
 from app import guard
+from app import context as ctx  # "context" adı Playwright tarayıcı bağlamı için kullanılıyor
 
 log = get_logger("automator")
 
@@ -34,7 +35,7 @@ def _browser():
     """Kalıcı profil ile görünür Chrome açar; her durumda kapatır."""
     with sync_playwright() as p:
         context = p.chromium.launch_persistent_context(
-            user_data_dir=CHROME_PROFILE, headless=False, channel="chrome",
+            user_data_dir=ctx.chrome_profile(), headless=False, channel="chrome",
             args=BROWSER_ARGS, ignore_default_args=["--enable-automation"], no_viewport=True,
         )
         try:
@@ -80,7 +81,7 @@ def session_status(profile_dir=None, now=None):
     """Bot profilindeki çerezlerden hangi platformlara giriş yapılmış olduğunu okur (tarayıcı açmadan).
     Dönüş: {"LinkedIn": True/False, "Kariyer.net": True/False}. Çerez DEĞERLERİ okunmaz."""
     import sqlite3, time
-    path = os.path.join(profile_dir or CHROME_PROFILE, "Default", "Cookies")
+    path = os.path.join(profile_dir or ctx.chrome_profile(), "Default", "Cookies")
     out = {k: False for k in SESSION_COOKIES}
     if not os.path.exists(path):
         return out
@@ -243,7 +244,8 @@ def choose_cv(tailored_path=None):
     """Başvuruda kullanılacak CV: ilana özel üretilen varsa o, yoksa orijinal Cv.pdf."""
     if isinstance(tailored_path, str) and tailored_path and os.path.exists(tailored_path):  # NaN/None gelebilir
         return tailored_path
-    return CV_PATH if os.path.exists(CV_PATH) else None
+    cv = ctx.cv_path()
+    return cv if os.path.exists(cv) else None
 
 
 def _accepts(accept_attr, path):
@@ -408,7 +410,7 @@ def run_application_bot(job_id, job_url, mode="yari", cv_path=None):
     cv_path: formda CV yükleme alanı çıkarsa yüklenecek dosya (genelde ilana özel CV).
     Dönüş: (durum, mesaj)
     """
-    fallback = CV_PATH if os.path.exists(CV_PATH) else None
+    fallback = ctx.cv_path() if os.path.exists(ctx.cv_path()) else None
     uploaded = None
     platform = platform_of(job_url)
     decision = guard.check(platform, guard.APPLY)

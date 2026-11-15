@@ -150,10 +150,15 @@ def field_families(text):
     return {fam for fam, names in FIELD_FAMILIES.items() if any(n in low for n in names)}
 
 
+def _profile_path():
+    from app import context
+    return context.extra_profile_path()
+
+
 def load_extra_profile():
     """documents/profile.json: CV'de olmayan ama formlarda sorulan bilgiler (ehliyet, askerlik...)."""
     try:
-        with open(PROFILE_PATH, encoding="utf-8") as f:
+        with open(_profile_path(), encoding="utf-8") as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
@@ -161,10 +166,10 @@ def load_extra_profile():
 
 def save_extra_profile(data: dict):
     """documents/profile.json dosyasını güvenli biçimde kaydeder."""
-    os.makedirs(os.path.dirname(PROFILE_PATH), exist_ok=True)
+    os.makedirs(os.path.dirname(_profile_path()), exist_ok=True)
     current = load_extra_profile()
     current.update(data)
-    with open(PROFILE_PATH, "w", encoding="utf-8") as f:
+    with open(_profile_path(), "w", encoding="utf-8") as f:
         json.dump(current, f, ensure_ascii=False, indent=2)
     return current
 

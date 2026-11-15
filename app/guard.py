@@ -21,7 +21,12 @@ from app.logger import get_logger
 
 log = get_logger("guard")
 
-DB_PATH = settings.DB_PATH  # testler bunu geçici dosyayla değiştirir
+DB_PATH = None  # None = etkin kullanıcının veritabanı (app.context); testler geçici dosya verir
+
+
+def db_file():
+    from app import context
+    return DB_PATH or context.db_path()
 
 APPLY, SCRAPE, INVITE, SYNC, FETCH, BLOCKED = "apply", "scrape", "invite", "sync", "fetch", "blocked"
 
@@ -58,7 +63,7 @@ class Decision:
 
 
 def _connect():
-    conn = sqlite3.connect(DB_PATH, timeout=10)
+    conn = sqlite3.connect(db_file(), timeout=10)
     conn.execute("""CREATE TABLE IF NOT EXISTS activity_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         platform TEXT NOT NULL, action TEXT NOT NULL, detail TEXT, created_at TEXT NOT NULL)""")

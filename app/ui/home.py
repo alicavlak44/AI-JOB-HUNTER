@@ -27,7 +27,7 @@ def _connections():
 
 
 def page_home():
-    header("⚡ Kariyer Otonomu", "İlan bul → analiz et → isabetli başvur → İK ağını büyüt. Sol menüden ilerleyin.")
+    header("⚡ Kariyer Otonomu", "İlan bul → analiz et → isabetli başvur → İK ağını büyüt. Üst menüden ilerleyin; sağ üstte kullanıcı menünüz var.")
     show_flash("home")
 
     st.subheader("🔗 Hesaplar")

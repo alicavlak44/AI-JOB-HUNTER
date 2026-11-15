@@ -8,7 +8,8 @@ from ai_engine.brain import extract_positions_from_cv, AIError
 from ai_engine.cv_builder import build_tailored_cv
 from app import campaign
 from app.logger import get_logger
-from app.settings import DEFAULT_POSITIONS, STATUS_APPLIED_VERIFIED
+from app import context
+from app.settings import STATUS_APPLIED_VERIFIED
 from app.ui.common import header, show_flash, set_flash, msg_kind, txt
 from browser.automator import (scrape_kariyernet_browser, run_application_bot, open_linkedin_hr_hunter, choose_cv)
 from browser.scraper import scrape_linkedin_jobs, build_hr_search_url, stats_message
@@ -18,11 +19,13 @@ log = get_logger("ui.jobs")
 
 
 def _search():
-    if "positions" not in st.session_state:
-        st.session_state["positions"] = DEFAULT_POSITIONS
+    key = f"positions_{context.current()}"
+    if key not in st.session_state:
+        st.session_state[key] = context.user().get("targets") or ["Uzman"]
     c1, c2, c3 = st.columns([2.2, 1, 1.2])
-    pos = c1.selectbox("Pozisyon", st.session_state["positions"])
-    city = c2.text_input("Şehir", value="Ankara")
+    pos = c1.selectbox("Pozisyon", st.session_state[key], accept_new_options=True,
+                       help="Listeden seçin veya yeni bir unvan yazın")
+    city = c2.text_input("Şehir", value=context.user().get("city", "Ankara"))
     src = c3.radio("Kaynak", ["LinkedIn (hızlı)", "Kariyer.net"], horizontal=True)
     b1, b2 = st.columns([1, 1])
     if b1.button("🔎 İlanları getir", type="primary", width="stretch"):
@@ -39,7 +42,8 @@ def _search():
                 found = []
                 set_flash("jobs", "error", f"❌ {e}")
         if found:
-            st.session_state["positions"] = found
+            st.session_state[key] = found
+            context.update_user(context.current(), targets=found)
             set_flash("jobs", "success", "✅ Pozisyon listesi CV'nize göre güncellendi.")
         st.rerun()
 

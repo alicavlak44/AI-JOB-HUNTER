@@ -17,7 +17,7 @@ log = get_logger("account")
 
 
 def _connect():
-    conn = sqlite3.connect(guard.DB_PATH, timeout=10)
+    conn = sqlite3.connect(guard.db_file(), timeout=10)
     conn.execute("""CREATE TABLE IF NOT EXISTS known_people (
         url TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT, synced_at TEXT NOT NULL)""")
     conn.execute("""CREATE TABLE IF NOT EXISTS account_snapshot (

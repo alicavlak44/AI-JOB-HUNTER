@@ -7,7 +7,8 @@ from contextlib import contextmanager
 import pandas as pd
 
 from app.logger import get_logger
-from app.settings import DB_PATH, STATUS_NEW, STATUS_ANALYZED, STATUS_APPLY_UNVERIFIED, STATUS_APPLIED_VERIFIED
+from app import context
+from app.settings import STATUS_NEW, STATUS_ANALYZED, STATUS_APPLY_UNVERIFIED, STATUS_APPLIED_VERIFIED
 
 log = get_logger("db")
 
@@ -30,7 +31,7 @@ _EXTRA_COLUMNS = {
 
 @contextmanager
 def _connect():
-    conn = sqlite3.connect(DB_PATH, timeout=10)
+    conn = sqlite3.connect(context.db_path(), timeout=10)
     try:
         yield conn
         conn.commit()
@@ -163,9 +164,10 @@ def delete_unprocessed_jobs():
 
 
 def reset_database():
-    if os.path.exists(DB_PATH):
-        backup = DB_PATH + ".bak"
-        os.replace(DB_PATH, backup)
+    db = context.db_path()
+    if os.path.exists(db):
+        backup = db + ".bak"
+        os.replace(db, backup)
         log.warning("Veritabanı sıfırlandı, eski kopya: %s", backup)
     init_db()
 

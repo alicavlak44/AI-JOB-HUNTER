@@ -17,10 +17,18 @@ from ai_engine.job_matcher import (match, find_skills, blended_score, recommenda
                                    verify_requirements, rubric_score, FIELD_FIT_LABELS,
                                    drop_profile_requirements)
 
-_FIELD_FIT_TEXT = "\n".join(f"    {k} = {v}" for k, v in FIELD_FIT_LABELS.items())
+_GENERIC_FIT = {0: "tamamen farklı meslek", 1: "uzak ilgili meslek", 2: "aynı sektör, farklı rol",
+                3: "yakın rol", 4: "aynı rol"}
+
+
+def _field_fit_text():
+    """Alan yakınlığı ölçeği: BT örnekleri sadece BT kullanıcısında (İK arayan biri için 'İK = farklı meslek' olmasın)."""
+    from app import context
+    labels = FIELD_FIT_LABELS if context.field() == "it" else _GENERIC_FIT
+    return "\n".join(f"    {k} = {v}" for k, v in labels.items())
 from app.logger import get_logger
 from app.settings import (
-    CV_PATH, LM_STUDIO_URL, LM_MODEL, LM_TIMEOUT, LM_REASONING_EFFORT, CANDIDATE_NAME,
+    LM_STUDIO_URL, LM_MODEL, LM_TIMEOUT, LM_REASONING_EFFORT,
     CV_MAX_CHARS, JOB_DESC_MAX_CHARS, COVER_LETTERS_DIR, REPORTS_DIR,
 )
 
@@ -61,10 +69,22 @@ def _read_cv_cached(path, mtime):
 
 
 def read_cv_text():
-    if not os.path.exists(CV_PATH):
-        log.warning("CV bulunamadı: %s", CV_PATH)
+    from app import context
+    path = context.cv_path()
+    if not os.path.exists(path):
+        log.warning("CV bulunamadı: %s", path)
         return ""
-    return _read_cv_cached(CV_PATH, os.path.getmtime(CV_PATH))
+    return _read_cv_cached(path, os.path.getmtime(path))
+
+
+def _candidate():
+    from app import context
+    return context.name()
+
+
+def _field_label():
+    from app import context
+    return context.FIELDS.get(context.field(), "genel")
 
 
 def _cv_for_prompt():
@@ -122,7 +142,7 @@ def extract_positions_from_cv():
     if not cv:
         raise AIError("CV bulunamadı (documents/Cv.pdf)")
     data = _chat_json(
-        system="Sen deneyimli bir IT işe alım uzmanısın. Sadece istenen JSON'u döndür.",
+        system=f"Sen deneyimli bir işe alım uzmanısın ({_field_label()}). Sadece istenen JSON'u döndür.",
         user=(
             f"Adayın CV'si:\n{cv}\n\n"
             "Bu adayın deneyimine en uygun 6 iş ilanı arama unvanını çıkar. "
@@ -220,21 +240,21 @@ def _analysis_system_prompt(cv, brief=False):
     status: "var" = CV'de açıkça yazıyor; "kısmen" = benzer/ilgili deneyim var; "yok" = CV'de yok
     evidence: "var" ise CV'den KELİMESİ KELİMESİNE kısa alıntı (2-6 kelime); değilse boş "".
 - field_fit: Adayın mesleğinin ilandaki role yakınlığı, tam sayı:
-{_FIELD_FIT_TEXT}
+{_field_fit_text()}
 - golden_keywords: İlanda aranan en kritik teknik anahtar kelimeler (ATS için).
 - missing_skills: İlanda istenip CV'de olmayan beceri/şartlar. "CV'de AÇIKÇA bulunan" listesindekileri ASLA yazma.
 - evaluation: Türkçe, 3-5 madde, her madde "- " ile başlasın. Güçlü yönler ve dikkat edilecekler.
   Deneyim süresi için DOĞRULANMIŞ GERÇEKLER'deki yıl değerini kullan."""
     if not brief:
         tasks += f"""
-- cover_letter: {CANDIDATE_NAME} adına, şirketin İK ekibine hitaben, Türkçe, 180-250 kelimelik profesyonel ön yazı.
+- cover_letter: {_candidate()} adına, şirketin İK ekibine hitaben, Türkçe, 180-250 kelimelik profesyonel ön yazı.
   Yer tutucu ([Tarih] vb.) kullanma.
-- hr_message: {CANDIDATE_NAME}'in, ilandaki şirkette bir İK / işe alım uzmanına göndereceği LinkedIn bağlantı isteği notu.
+- hr_message: {_candidate()}'in, ilandaki şirkette bir İK / işe alım uzmanına göndereceği LinkedIn bağlantı isteği notu.
   Adayın ağzından (birinci tekil şahıs, "ben") yazılsın, "Merhaba," diye başlasın, pozisyon adını ansın.
   Türkçe, EN FAZLA 280 karakter. Tekil konuş ("başvurumu", "başvurumuzu" değil).
 - cover_letter ve hr_message içinde SADECE CV'de yazan bilgileri kullan: CV'de olmayan sertifika, ehliyet,
   deneyim veya beceri iddia etme. "BİLİNMİYOR" yazan konulardan hiç bahsetme."""
-    return f"""Sen kıdemli bir IT işe alım ve ATS uzmanısın. Dürüst ve ölçülü değerlendirirsin. Sadece istenen JSON'u döndürürsün.
+    return f"""Sen kıdemli bir işe alım ve ATS uzmanısın ({_field_label()} alanı). Dürüst ve ölçülü değerlendirirsin. Sadece istenen JSON'u döndürürsün.
 
 {tasks}
 
