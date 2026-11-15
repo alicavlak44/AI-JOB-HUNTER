@@ -33,6 +33,9 @@ def page_settings():
         if st.form_submit_button("Kaydet", type="primary"):
             upd = dict(name=name.strip() or u["name"], field=field, city=city,
                        targets=[t.strip() for t in targets.splitlines() if t.strip()])
+            if new_pin and new_pin != "-" and len(new_pin) < 4:
+                st.error("PIN en az 4 hane olmalı.")
+                st.stop()
             if new_pin:
                 upd["pin"] = None if new_pin == "-" else new_pin
             context.update_user(context.current(), **upd)

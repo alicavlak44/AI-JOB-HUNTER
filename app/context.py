@@ -10,6 +10,7 @@ documents/Cv.pdf — mevcut veriler ve oturumlar korunur. Diğerleri profiles/<k
 Etkin kullanıcı iş parçacığına özeldir (Streamlit her oturumu ayrı iş parçacığında çalıştırır).
 """
 import hashlib
+import unicodedata
 import json
 import os
 import re
@@ -39,9 +40,10 @@ _local = threading.local()
 
 
 def slugify(name):
-    # 'İ'.lower() Python'da 'i' + birleşik nokta verir → önce Türkçe büyük harfleri elle çevir
-    s = (name or "").strip().replace("İ", "i").replace("I", "ı").lower()
-    s = s.translate(str.maketrans("çğıöşüâî", "cgiosuai"))
+    # 'İ'.lower() Python'da 'i' + birleşik nokta verir → önce Türkçe büyük harfleri elle çevir;
+    # sonra NFKD ile aksanları ayırıp at (José → jose, ayrışık yazılmış 'İlker' → ilker)
+    s = (name or "").strip().replace("İ", "i").replace("I", "ı").lower().replace("ı", "i")
+    s = "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c))
     return re.sub(r"[^a-z0-9]+", "-", s).strip("-") or "kullanici"
 
 
@@ -73,7 +75,7 @@ def create_user(name, field="genel", targets=None, city="Ankara", pin=None):
     users = load_users()
     slug = base = slugify(name)
     n = 2
-    while slug in users:
+    while slug in users or os.path.exists(os.path.join(PROFILES_DIR, slug)):  # eski klasörü devralmasın
         slug, n = f"{base}-{n}", n + 1
     salt = secrets.token_hex(8) if pin else None
     users[slug] = {"name": name.strip(), "field": field if field in FIELDS else "genel",
@@ -118,7 +120,7 @@ def current():
 
 def user(slug=None):
     users = load_users()
-    return users.get(slug or current()) or users[DEFAULT_USER]
+    return users.get(slug or current()) or users.get(DEFAULT_USER) or next(iter(users.values()))
 
 
 def is_default(slug=None):
@@ -150,6 +152,17 @@ def cv_path(slug=None):
 def extra_profile_path(slug=None):
     return (os.path.join(settings.DOCS_DIR, "profile.json") if is_default(slug)
             else os.path.join(user_dir(slug), "ek_bilgiler.json"))
+
+
+def out_dir(kind, slug=None):
+    """Kullanıcıya özel çıktı klasörü: 'generated_cv' | 'cover_letters' | 'reports'.
+    Varsayılan kullanıcı eski konumları kullanır; diğerleri profiles/<kullanıcı>/<kind>/ — dosya adları ilan
+    numarasına göre olduğundan (her kullanıcıda 1'den başlar) ortak klasör başka kişinin CV'sini ezerdi."""
+    legacy = {"generated_cv": os.path.join(settings.DOCS_DIR, "generated_cv"),
+              "cover_letters": settings.COVER_LETTERS_DIR, "reports": settings.REPORTS_DIR}
+    d = legacy[kind] if is_default(slug) else os.path.join(user_dir(slug), kind)
+    os.makedirs(d, exist_ok=True)
+    return d
 
 
 def field(slug=None):

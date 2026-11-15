@@ -96,5 +96,36 @@ class SlugTests(unittest.TestCase):
         self.assertEqual(context.slugify("Mücahit IŞIK"), "mucahit-isik")
 
 
+class ReviewRegressionTests(UsersTests):
+    """2026-11-15 bağımsız inceleme bulguları."""
+
+    def test_outputs_are_per_user(self):
+        context.load_users()
+        b = context.create_user("Mücahit", field="ik")
+        a_dir = context.out_dir("generated_cv", context.DEFAULT_USER)
+        b_dir = context.out_dir("generated_cv", b)
+        self.assertNotEqual(a_dir, b_dir)  # aynı ilan no + şirket → başka kişinin CV'sini ezmesin
+        self.assertIn(b, b_dir)
+        self.assertNotEqual(context.out_dir("cover_letters", b), context.out_dir("cover_letters", context.DEFAULT_USER))
+
+    def test_new_user_does_not_inherit_existing_folder(self):
+        context.load_users()
+        os.makedirs(os.path.join(context.PROFILES_DIR, "eski-kisi"))
+        self.assertEqual(context.create_user("Eski Kişi"), "eski-kisi-2")
+
+    def test_slug_unicode(self):
+        self.assertEqual(context.slugify("JOSÉ"), "jose")
+        self.assertEqual(context.slugify("I\u0307lker"), "ilker")  # ayrışık (NFD) yazılmış İ
+
+
+class HRFalsePositiveTests(unittest.TestCase):
+    def test_not_hr(self):
+        from browser.scraper import is_relevant
+        for t in ("İklimlendirme Teknisyeni", "İkinci El Satış Danışmanı", "Personel Servis Şoförü",
+                  "Performans Pazarlama Uzmanı"):
+            self.assertFalse(is_relevant(t, "İnsan Kaynakları Uzmanı", "ik"), t)
+        self.assertTrue(is_relevant("Eğitim Koordinatörü", "İnsan Kaynakları Uzmanı", "ik"))
+
+
 if __name__ == "__main__":
     unittest.main()

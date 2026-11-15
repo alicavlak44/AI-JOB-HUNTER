@@ -53,11 +53,14 @@ IT_TERMS = [
 _IT_RE = re.compile(r"(?<![\wçğıöşü])(?:" + "|".join(IT_TERMS) + r")(?:[\wçğıöşü]*)", re.IGNORECASE)
 # İnsan Kaynakları alanı: unvanda bunlardan biri varsa ilan İK ile ilgili sayılır
 HR_TERMS = [
-    "insan kaynak", "ik", "human resource", "hr", "hrbp", "bordro", "özlük", "işe alım", "recruit", "talent",
-    "yetenek", "people", "personel", "ücret", "yan hak", "compensation", "payroll", "eğitim ve gelişim",
-    "organizasyonel gelişim", "performans", "çalışan deneyimi", "employee experience", "kurumsal iletişim",
+    r"insan kaynak\w*", r"ik", r"human resources?", r"hr", r"hrbp", r"bordro\w*", r"özlük", r"işe alım\w*",
+    r"recruit\w*", r"talent", r"yetenek yönetim\w*", r"people (?:&|and) culture", r"people partner",
+    r"personel (?:ve|&) idari\w*", r"personel işleri", r"ücret (?:ve|&) yan hak\w*", r"ücretlendirme",
+    r"yan haklar", r"compensation", r"payroll", r"eğitim (?:ve|&) gelişim", r"eğitim (?:uzman|koordinatör|sorumlu)\w*",
+    r"organizasyonel gelişim", r"performans yönetim\w*", r"çalışan deneyimi", r"employee experience",
 ]
-_HR_RE = re.compile(r"(?<![\wçğıöşü])(?:" + "|".join(HR_TERMS) + r")(?:[\wçğıöşü]*)", re.IGNORECASE)
+# Kelime sınırıyla: "ik" → "İklimlendirme"yi, "personel" → "Personel Servis Şoförü"nü yakalamasın
+_HR_RE = re.compile(r"(?<![\wçğıöşü])(?:" + "|".join(HR_TERMS) + r")(?![\wçğıöşü])", re.IGNORECASE)
 _FIELD_RE = {"it": _IT_RE, "ik": _HR_RE}
 
 

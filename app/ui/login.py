@@ -65,6 +65,13 @@ def login_screen():
         st.caption("Her kullanıcının ilanları, CV'si, LinkedIn/Kariyer.net oturumu ve limitleri ayrı tutulur.")
 
 
+def _reset_session():
+    """Kullanıcı değişince önceki kişinin bulunan İK listesi, kampanya sonuçları vb. YENİ kişiye kalmasın
+    (aksi halde B, A'nın listesine kendi hesabından davet atabilirdi)."""
+    st.session_state.clear()
+    st.query_params.pop("u", None)
+
+
 def user_menu(pages):
     """Sağ üstteki kullanıcı menüsü."""
     u = context.user()
@@ -75,11 +82,9 @@ def user_menu(pages):
         st.page_link(pages["settings"], label="Profil ve ayarlar", icon="⚙️")
         others = {s: x["name"] for s, x in context.load_users().items() if s != context.current()}
         if others and st.button("🔁 Kullanıcı değiştir", width="stretch"):
-            st.session_state.pop("user", None)
-            st.query_params.pop("u", None)
+            _reset_session()
             st.rerun()
         if st.button("🚪 Çıkış", width="stretch"):
-            st.session_state.pop("user", None)
-            st.query_params.pop("u", None)
+            _reset_session()
             st.session_state["logged_out"] = True
             st.rerun()

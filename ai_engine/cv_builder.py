@@ -16,14 +16,14 @@ import re
 from dataclasses import dataclass, field, asdict
 
 from app.logger import get_logger
-from app.settings import DOCS_DIR
 from ai_engine.cv_profile import PERIOD_RE, build_profile
 from ai_engine.job_matcher import find_skills, match, normalize
 
 log = get_logger("cv_builder")
 
-GENERATED_CV_DIR = os.path.join(DOCS_DIR, "generated_cv")
-os.makedirs(GENERATED_CV_DIR, exist_ok=True)
+def _generated_dir():
+    from app import context
+    return context.out_dir("generated_cv")  # kullanıcıya özel (ilan numaraları kullanıcılar arasında çakışır)
 
 SECTION_NAMES = {
     "kişisel bilgiler": "contact", "iletişim": "contact", "beceriler": "skills", "yetenekler": "skills",
@@ -490,7 +490,7 @@ def build_tailored_cv(job_id, job_title, company, job_desc, model=None):
     from ai_engine.brain import read_cv_text, AIError, _safe_filename
     cv_text = read_cv_text()
     if not cv_text:
-        raise AIError("CV bulunamadı (documents/Cv.pdf)")
+        raise AIError("CV bulunamadı — Profil ve Ayarlar sayfasından CV yükleyin")
     parsed = parse_cv(cv_text)
     if not parsed.experience:
         raise AIError("CV'nin deneyim bölümü okunamadı; ilana özel CV üretilemiyor.")
@@ -500,7 +500,7 @@ def build_tailored_cv(job_id, job_title, company, job_desc, model=None):
     data = _ask_model(parsed, job_title, company, job_desc, facts, model=model)
     tailored, report = apply_suggestion(parsed, data, cv_text, profile.professional_years)
 
-    path = os.path.join(GENERATED_CV_DIR, f"{job_id}_{_safe_filename(company)}_CV.docx")
+    path = os.path.join(_generated_dir(), f"{job_id}_{_safe_filename(company)}_CV.docx")
     write_docx(tailored, path)
 
     # Son güvenlik ağı: tüm belgede orijinalde olmayan beceri/sayı var mı?

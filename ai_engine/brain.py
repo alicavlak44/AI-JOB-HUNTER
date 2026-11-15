@@ -29,7 +29,7 @@ def _field_fit_text():
 from app.logger import get_logger
 from app.settings import (
     LM_STUDIO_URL, LM_MODEL, LM_TIMEOUT, LM_REASONING_EFFORT,
-    CV_MAX_CHARS, JOB_DESC_MAX_CHARS, COVER_LETTERS_DIR, REPORTS_DIR,
+    CV_MAX_CHARS, JOB_DESC_MAX_CHARS,
 )
 
 log = get_logger("brain")
@@ -75,6 +75,11 @@ def read_cv_text():
         log.warning("CV bulunamadı: %s", path)
         return ""
     return _read_cv_cached(path, os.path.getmtime(path))
+
+
+def _out(kind):
+    from app import context
+    return context.out_dir(kind)
 
 
 def _candidate():
@@ -140,7 +145,7 @@ _POSITIONS_SCHEMA = {
 def extract_positions_from_cv():
     cv = _cv_for_prompt()
     if not cv:
-        raise AIError("CV bulunamadı (documents/Cv.pdf)")
+        raise AIError("CV bulunamadı — Profil ve Ayarlar sayfasından CV yükleyin")
     data = _chat_json(
         system=f"Sen deneyimli bir işe alım uzmanısın ({_field_label()}). Sadece istenen JSON'u döndür.",
         user=(
@@ -271,7 +276,7 @@ def full_ai_analysis(job_id, job_title, company, city, job_desc, model=None, sav
     """
     cv = _cv_for_prompt()
     if not cv:
-        raise AIError("CV bulunamadı (documents/Cv.pdf)")
+        raise AIError("CV bulunamadı — Profil ve Ayarlar sayfasından CV yükleyin")
 
     desc = (job_desc or "").strip()
     has_desc = len(desc) > 80
@@ -357,10 +362,10 @@ DOĞRULANMIŞ GERÇEKLER (kodla hesaplandı, KESİN doğrudur — bunlarla ÇEL�
     base = f"{job_id}_{_safe_filename(company)}"
     result["cover_letter_path"] = ""
     if result["cover_letter"]:
-        result["cover_letter_path"] = os.path.join(COVER_LETTERS_DIR, f"{base}_on_yazi.txt")
+        result["cover_letter_path"] = os.path.join(_out("cover_letters"), f"{base}_on_yazi.txt")
         with open(result["cover_letter_path"], "w", encoding="utf-8") as f:
             f.write(result["cover_letter"] + "\n")
-    with open(os.path.join(REPORTS_DIR, f"{base}_analiz.json"), "w", encoding="utf-8") as f:
+    with open(os.path.join(_out("reports"), f"{base}_analiz.json"), "w", encoding="utf-8") as f:
         json.dump({"job_id": job_id, "title": job_title, "company": company, "city": city,
                    "analyzed_at": datetime.now().isoformat(timespec="seconds"),
                    "model": model or LM_MODEL, "had_description": has_desc,
