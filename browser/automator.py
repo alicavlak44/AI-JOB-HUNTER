@@ -333,12 +333,25 @@ def needs_human(page_text):
     return next((x for x in HUMAN_CHECK_TEXTS if x in t), None)
 
 
+def _all_text(page):
+    """Ana sayfa + tüm çerçeveler (doğrulama kutuları çoğu zaman iframe içinde: Kariyer.net 'Basılı Tut')."""
+    parts = [_page_text(page)]
+    for fr in page.frames[1:]:
+        try:
+            parts.append(fr.locator("body").inner_text(timeout=1500).lower())
+        except PlaywrightError:
+            continue
+    return "\n".join(parts)
+
+
 def _human_check_result(page, job_id, mode, context, sign):
     shot = _screenshot(page, f"job{job_id}_human_check")
     msg = (f"Platform insan doğrulaması istedi ('{sign}'). Bot doğrulamayı geçmez; "
            f"ilanı açıp doğrulamayı ve başvuruyu siz tamamlayın. {shot or ''}").strip()
     update_job_status(job_id, STATUS_AT_APPLY_SCREEN, error=msg)
     log.info("İlan #%s: %s", job_id, msg)
+    # Platform otomasyondan şüpheleniyor: hesabı korumak için bu platformda bot işlemleri dursun (tarayıcıda siz devam edin)
+    guard.report_block(platform_of(page.url), f"insan doğrulaması ('{sign}')")
     if mode == "yari":  # kullanıcı başındaysa pencereyi açık bırak
         _wait_until_closed(context, page, 300_000)
     return STATUS_AT_APPLY_SCREEN, msg
@@ -374,11 +387,48 @@ def _found_texts(page, texts):
     return {t for t in texts if t in body}
 
 
+# Onay metni kalıpları: arada şirket adı olabilir — "Başvurunuz Argela Technologies şirketine gönderildi!"
+# (2026-11-15: başvuru gittiği halde sadece bitişik metin arandığı için 'Doğrulanamadı' yazılıyordu)
+CONFIRM_RE = re.compile(r"başvurunuz\b.{0,120}?\b(gönderildi|iletildi|alındı)|your application was sent|"
+                        r"application (?:was )?submitted|başvuru gönderildi", re.I | re.S)
+# Formun doğrulama hataları: LinkedIn Evet/Hayır sorularında 'required' özniteliği koymuyor, sadece bu yazıyı gösteriyor
+VALIDATION_TEXTS = ["bu alanın doldurulması zorunludur", "this field is required", "lütfen bir seçim yapın",
+                    "please make a selection", "geçerli bir yanıt girin", "please enter a valid answer"]
+
+
+def confirmed_text(text):
+    return bool(CONFIRM_RE.search((text or "").lower().replace("\u0307", "")))
+
+
 def _is_confirmed(page, baseline):
     """Tıklamadan önce sayfada OLMAYAN bir onay metni belirdiyse True."""
     if page.is_closed():
         return False
-    return bool(_found_texts(page, APPLY_CONFIRMATION_TEXTS) - baseline)
+    if _found_texts(page, APPLY_CONFIRMATION_TEXTS) - baseline:
+        return True
+    return "__re__" not in baseline and confirmed_text(_page_text(page))
+
+
+def _validation_questions(page):
+    """Doğrulama hatası gösteren soruların metni (boşsa [])."""
+    try:
+        return page.evaluate("""(signs) => {
+            const out = [];
+            for (const el of document.querySelectorAll('[role=dialog], dialog[open], form, main')) {
+                for (const e of el.querySelectorAll('*')) {
+                    const t = (e.childElementCount === 0 ? e.innerText : '') || '';
+                    if (!signs.some(s => t.toLowerCase().includes(s))) continue;
+                    let q = e.closest('fieldset, [data-test-form-element], .fb-dash-form-element, div');
+                    for (let i = 0; i < 4 && q && q.innerText.trim() === t.trim(); i++) q = q.parentElement;
+                    const lab = (q && (q.querySelector('legend, label, span[aria-hidden=true]')?.innerText || q.innerText)) || t;
+                    out.push(lab.split('\\n')[0].trim().slice(0, 120));
+                }
+                if (out.length) break;
+            }
+            return [...new Set(out)];
+        }""", VALIDATION_TEXTS)
+    except PlaywrightError:
+        return []
 
 
 _FIELDS_JS = """() => {
@@ -460,7 +510,7 @@ def run_application_bot(job_id, job_url, mode="yari", cv_path=None, wait_user_ms
                 return None, (f"🛡️ {platform} bot koruması belirtisi gösterdi ({block}). Hesabı korumak için "
                               f"başvurular {guard.settings.BLOCK_COOLDOWN_HOURS:.0f} saat durduruldu.")
 
-            sign = needs_human(_page_text(page))
+            sign = needs_human(_all_text(page))
             if sign:
                 return _human_check_result(page, job_id, mode, context, sign)
 
@@ -471,6 +521,8 @@ def run_application_bot(job_id, job_url, mode="yari", cv_path=None, wait_user_ms
 
             # Sayfada zaten var olan onay benzeri metinler (menü vb.) sayılmasın
             baseline = _found_texts(page, APPLY_CONFIRMATION_TEXTS)
+            if confirmed_text(_page_text(page)):
+                baseline = baseline | {"__re__"}
 
             clicked = _click_first(page, APPLY_BUTTON_TEXTS)
             if not clicked:
@@ -483,7 +535,7 @@ def run_application_bot(job_id, job_url, mode="yari", cv_path=None, wait_user_ms
             log.info("İlan #%s: '%s' butonuna tıklandı (mod: %s)", job_id, clicked, mode)
             guard.record(platform, guard.APPLY, f"job {job_id}")
             page.wait_for_timeout(1500)
-            sign = needs_human(_page_text(page))
+            sign = needs_human(_all_text(page))
             if sign:
                 return _human_check_result(page, job_id, mode, context, sign)
 
@@ -514,6 +566,21 @@ def run_application_bot(job_id, job_url, mode="yari", cv_path=None, wait_user_ms
                         break
                     if not _click_first(page, NEXT_BUTTON_TEXTS):
                         log.info("İlan #%s: adım %d'de ilerleme butonu yok", job_id, step + 1)
+                        break
+                    sign = needs_human(_all_text(page))
+                    if sign:
+                        return _human_check_result(page, job_id, mode, context, sign)
+                    questions = _validation_questions(page)
+                    if questions:  # 'İleri' formu geçirmedi: cevaplanmamış (Evet/Hayır vb.) sorular var
+                        _screenshot(page, f"job{job_id}_needs_input")
+                        msg = ("Cevabınızı bekleyen soru(lar): " + "; ".join(questions) +
+                               ". Bot Evet/Hayır sorularını sizin yerinize cevaplamaz. LinkedIn yarım başvuruyu "
+                               "'Devam Ediyor' altında saklar.")
+                        update_job_status(job_id, STATUS_AT_APPLY_SCREEN, error=msg)
+                        log.info("İlan #%s: %s", job_id, msg)
+                        _wait_until_closed(context, page, wait_user_ms)
+                        if page.is_closed() or not _is_confirmed(page, baseline):
+                            return STATUS_AT_APPLY_SCREEN, msg
                         break
             else:
                 update_job_status(job_id, STATUS_AT_APPLY_SCREEN)

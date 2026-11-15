@@ -242,3 +242,14 @@ class SessionStatusTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConfirmTextTests(unittest.TestCase):
+    """2026-11-15 canlı test: 'Başvurunuz Argela Technologies şirketine gönderildi!' tanınmıyordu."""
+
+    def test_confirmations(self):
+        from browser.automator import confirmed_text
+        self.assertTrue(confirmed_text("Başvurunuz Argela Technologies şirketine gönderildi!"))
+        self.assertTrue(confirmed_text("Your application was sent to Mplus!"))
+        self.assertFalse(confirmed_text("Başvurular düzenli olarak incelenir"))
+        self.assertFalse(confirmed_text("Başvurunuzu İş İlanlarım bölümünden takip edebilirsiniz"))
