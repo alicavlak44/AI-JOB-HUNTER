@@ -47,5 +47,20 @@ class MessageTests(unittest.TestCase):
         self.assertTrue(stats_message("LinkedIn", st).startswith("❌"))
 
 
+
+class LiveFindingsTests(unittest.TestCase):
+    """2026-11-15 canlı testte yanlışlıkla elenen BT ilanları."""
+
+    def test_it_titles_not_dropped(self):
+        from browser.scraper import filter_title, new_stats
+        for t in ("Kubernetes Administrator", "Presales Systems Engineer, Ankara", "Atlassian Çözüm Uzmanı"):
+            self.assertTrue(filter_title(t, "Sistem Yöneticisi", new_stats()), t)
+
+    def test_real_sales_still_dropped(self):
+        from browser.scraper import filter_title, new_stats
+        self.assertFalse(filter_title("Sales Manager", "Sistem Yöneticisi", new_stats()))
+        self.assertFalse(filter_title("Satış Temsilcisi", "Sistem Yöneticisi", new_stats()))
+
+
 if __name__ == "__main__":
     unittest.main()

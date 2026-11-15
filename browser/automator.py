@@ -530,6 +530,8 @@ def open_linkedin_hr_hunter(hr_search_url):
 HR_TERMS = ["insan kaynakları", "i̇nsan kaynakları", "ik ", "ik|", " ik", "human resources", "hr ", " hr", "hrbp",
             "talent", "yetenek", "işe alım", "recruit", "people & culture", "people and culture"]
 CONNECT_NAME_RE = re.compile(r"bağlantı kurmak için davet et|invite .* to connect", re.IGNORECASE)
+# LinkedIn yeni arayüzde açılır pencereler için yerel <dialog> öğesi kullanıyor (role="dialog" YOK) — ikisini de ara
+DIALOG_SEL = "[role=dialog], [role=alertdialog], dialog[open]"
 SEND_WITHOUT_NOTE = ["Not olmadan gönderin", "Not olmadan gönder", "Send without a note"]
 PENDING_TEXTS = ["beklemede", "pending"]
 
@@ -593,7 +595,7 @@ _CARDS_JS = """() => {
 def _close_upsell(page):
     """Açık pencere bir Premium reklamıysa Escape ile kapatır (asla satın alma tıklanmaz). Kapattıysa True."""
     try:
-        for d in page.locator("[role=dialog]").all():
+        for d in page.locator(DIALOG_SEL).all():
             if d.is_visible() and "premium" in (d.inner_text(timeout=1000) or "").lower():
                 page.keyboard.press("Escape")
                 page.wait_for_timeout(800)
@@ -650,7 +652,7 @@ def _invite_on_profile(page, profile_url):
     def _dialog_for_target():
         """Açılan davet penceresi hedef kişi için mi? Değilse GÖNDERME."""
         try:
-            for d in page.locator("[role=dialog]").all():
+            for d in page.locator(DIALOG_SEL).all():
                 if d.is_visible() and first_name and first_name in tr_lower(d.inner_text(timeout=1500)):
                     return True
         except PlaywrightError:

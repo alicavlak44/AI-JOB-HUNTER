@@ -147,5 +147,22 @@ class CasingTests(unittest.TestCase):
         self.assertEqual(tr_upper("Sertifikalar ve Eğitim"), "SERTİFİKALAR VE EĞİTİM")
 
 
+class CVStudioInfoLossTests(unittest.TestCase):
+    """2026-11-15 canlı test: yapay zeka 'iyileştirmesi' teknoloji ve görevleri siliyordu."""
+
+    def test_rejects_lost_tech_numbers_tasks(self):
+        from ai_engine.cv_studio import info_loss
+        self.assertTrue(info_loss("Windows Server (AD, GPO, DNS, DHCP, File Server) ve Linux/Nginx sistemlerini kurup yönettim.",
+                                  "Windows Server (AD, DNS, DHCP) ve Linux sistemlerini kurup yöneterek altyapı sürekliliğini sağladım."))
+        self.assertTrue(info_loss("Linux tabanlı son kullanıcı destek masasını sıfırdan oluşturarak BT operasyonlarını ve arıza takip süreçlerini merkezileştirdim.",
+                                  "Linux tabanlı son kullanıcı destek masasını sıfırdan oluşturarak BT operasyonlarını merkezileştirdim."))
+        self.assertTrue(info_loss("15 sunucuyu sanallaştırdım.", "Sunucuları sanallaştırdım."))
+
+    def test_accepts_good_rewrites(self):
+        from ai_engine.cv_studio import info_loss
+        self.assertEqual(info_loss("Sunucuları yönettim ve yedekledim.",
+                                   "Kurumsal sunucuların yönetimini ve düzenli yedeklemesini üstlendim."), [])
+
+
 if __name__ == "__main__":
     unittest.main()

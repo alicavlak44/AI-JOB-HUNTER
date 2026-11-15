@@ -228,8 +228,9 @@ def improve(profile: dict, original: str, target_title: str = "", model=None):
     except Exception:
         years = None
     system = ("Sen kıdemli bir Türk İK uzmanı ve CV editörüsün. Görevin CV'yi daha etkileyici YAZMAK, "
-              "ama ASLA yeni bilgi eklememek. Yeni beceri, sayı, sertifika, şirket, unvan, süre UYDURMA. "
-              "Sadece istenen JSON'u döndür.")
+              "ama ASLA yeni bilgi eklememek VE ASLA bilgi silmemek. Yeni beceri, sayı, sertifika, şirket, unvan, "
+              "süre UYDURMA. Maddedeki her teknoloji adını, her sayıyı ve her görevi KORU; sadece daha güçlü ve "
+              "akıcı yaz. Sadece istenen JSON'u döndür.")
     user = f"""HEDEF UNVAN: {target_title or profile.get('headline') or '-'}
 
 MEVCUT CV:
@@ -239,8 +240,8 @@ GÖREV:
 - headline: Hedef unvana uygun, en güçlü 3 teknolojiyi içeren başlık (en fazla 120 karakter).
 - summary: 3-4 cümlelik, birinci tekil şahıs, etkileyici ama ölçülü özet. SADECE CV'deki bilgiler.
 - bullets: Etkisi zayıf maddeleri yeniden yaz: güçlü fiille başlasın ("Yönettim", "Kurdum", "Tasarladım"),
-  varsa sayıyı öne çıkarsın, tek cümle, en fazla 180 karakter. exp ve idx köşeli parantezdeki numaralar.
-  Zaten iyi olan maddeyi listeye EKLEME. En fazla 10 madde."""
+  varsa sayıyı öne çıkarsın, tek cümle. Maddedeki TÜM teknolojileri, sayıları ve görevleri koru — kısaltmak için
+  bilgi atma. exp ve idx köşeli parantezdeki numaralar. Zaten iyi olan maddeyi listeye EKLEME. En fazla 8 madde."""
     data = _chat_json(system, user, "cv_improve", _IMPROVE_SCHEMA, temperature=0.3, model=model)
     out = {"accepted": [], "rejected": []}
 
@@ -248,7 +249,7 @@ GÖREV:
         new = (new or "").strip()
         if not new or new == old:
             return
-        why = check_text(new, src, years)
+        why = check_text(new, src, years) + info_loss(old, new)
         (out["rejected"] if why else out["accepted"]).append(
             {"where": where, "old": old, "new": new, **({"why": why} if why else {})})
 
@@ -263,6 +264,36 @@ GÖREV:
         judge(f"exp:{i}:{j}", old, b.get("text"))
     log.info("CV iyileştirme: %d öneri kabul, %d red", len(out["accepted"]), len(out["rejected"]))
     return out
+
+
+_STOP_STEMS = {"olara", "ederek", "edere", "sağla", "gerçe", "yaptı", "yöneti", "yönet", "ettim", "ederi"}
+
+
+def tr_lower(t):
+    return (t or "").replace("I", "ı").replace("İ", "i").lower()
+
+
+def info_loss(old: str, new: str):
+    """Öneri eski metindeki bilgiyi siliyor mu? (2026-11-15 canlı test: 'iyileştirme' HP Procurve, GPO, Nginx,
+    SSL VPN, eğitim organizasyonu gibi bilgileri atıyordu.) Dönüş: sorun listesi."""
+    from ai_engine.cv_builder import numbers_in
+    from ai_engine.job_matcher import find_skills
+    problems = []
+    lost_sk = find_skills(old) - find_skills(new)
+    if lost_sk:
+        problems.append(f"bilgi kaybı (teknoloji): {', '.join(sorted(lost_sk))}")
+    lost_num = numbers_in(old) - numbers_in(new)
+    if lost_num:
+        problems.append(f"bilgi kaybı (sayı): {', '.join(sorted(lost_num))}")
+    # görev/ifade kaybı: eski metnin anlamlı kelime köklerinden (ilk 5 harf) 3+ tanesi ve %20'den fazlası yoksa
+    stems = lambda t: {w[:5] for w in re.findall(r"[a-zçğıöşü]{5,}", tr_lower(t))} - _STOP_STEMS
+    old_st, new_st = stems(old), stems(new)
+    lost = old_st - new_st
+    if old_st and len(lost) >= 3 and len(lost) / len(old_st) > 0.2:
+        problems.append(f"içerik kaybı: {', '.join(sorted(lost))}…")
+    if len(new) < 0.7 * len(old):
+        problems.append(f"çok kısaldı ({len(old)} → {len(new)} karakter; içerik atılmış olabilir)")
+    return problems
 
 
 def apply_suggestion(profile: dict, s: dict):

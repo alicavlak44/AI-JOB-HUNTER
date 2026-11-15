@@ -32,7 +32,8 @@ def is_blacklisted(title, field=None):
     if _field(field) != "it":
         return False
     t_low = tr_lower(title)
-    return any(bad in t_low for bad in BLACKLIST_KEYWORDS)
+    # kelime başında ara: "sales" → "Presales Systems Engineer"ı elemesin
+    return any(re.search(rf"(?<![\wçğıöşü]){re.escape(bad)}", t_low) for bad in BLACKLIST_KEYWORDS)
 
 
 # Unvan kelimeleri: aramadaki "Uzmanı" yüzünden Muhasebe Uzmanı gibi ilanlar eşleşmesin
@@ -49,6 +50,9 @@ IT_TERMS = [
     "destek hizmet", "it support", "yazılım", "software", "veritaban", "database", "dba", "erp", "linux",
     "windows", "sanallaştırma", "virtuali", "noc", "soc", "data center", "veri merkezi", "donanım",
     "developer", "geliştirici", "web",
+    # 2026-11-15 canlı testte yanlışlıkla elenen BT ilanlarından:
+    "administrator", "sysadmin", "kubernetes", "docker", "atlassian", "jira", "sre", "site reliability",
+    "platform engineer", "systems engineer", "presales", "çözüm mimar", "solution architect", "noc",
 ]
 _IT_RE = re.compile(r"(?<![\wçğıöşü])(?:" + "|".join(IT_TERMS) + r")(?:[\wçğıöşü]*)", re.IGNORECASE)
 # İnsan Kaynakları alanı: unvanda bunlardan biri varsa ilan İK ile ilgili sayılır
