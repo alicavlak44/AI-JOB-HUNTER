@@ -18,7 +18,7 @@ FIELD_PATTERNS = [
     # SADECE genel toplam deneyim soruları. "How many years of Telecommunications experience" gibi
     # belirli alan/beceri soruları toplam yılla CEVAPLANMAZ (2026-11-15 Argela formunda yanlışlıkla 4 yazıldı).
     ("years", [r"\bkaç yıl(lık)? (toplam |profesyonel )?iş deneyim", r"\btoplam (iş )?deneyim",
-               r"\bkaç yıllık deneyim(iniz)? var\b", r"\byears? of (total |professional )?work experience\b",
+               r"\bkaç yıllık deneyim(iniz)? var\b", r"^\s*kaç yıl(lık)? deneyim(iniz)? var", r"\byears? of (total |professional )?work experience\b",
                r"\btotal years of experience\b", r"\byears? of (total |professional |work )?experience\b", r"\byears of (total |professional )?experience (do you have|in total)\b"]),
     ("email", [r"\be-?posta\b", r"\bemail\b", r"\be-mail\b"]),
     ("phone", [r"\btelefon", r"\bgsm\b", r"\bcep\b", r"\bphone\b", r"\bmobile\b"]),
