@@ -323,6 +323,10 @@ def _click_first(page, texts, scope=None):
     return None
 
 
+# Kapanmış ilan (2026-11-15: Bank of China ilanı kapanmıştı, bot 'düğme bulunamadı' diyordu)
+CLOSED_TEXTS = ["artık başvuru kabul etmiyor", "no longer accepting applications", "ilan yayından kaldırıldı",
+                "bu ilan yayında değil", "ilan süresi doldu", "this job is no longer available"]
+
 # Platformun "insan mısınız" doğrulaması (Kariyer.net 'Basılı Tut' vb.). Bot bunları AŞMAZ; ilanı kullanıcıya bırakır.
 HUMAN_CHECK_TEXTS = ["basılı tut", "insan olduğunuzu", "robot olmadığınızı", "press & hold", "press and hold",
                      "i'm not a robot", "verify you are human"]
@@ -513,6 +517,13 @@ def run_application_bot(job_id, job_url, mode="yari", cv_path=None, wait_user_ms
             sign = needs_human(_all_text(page))
             if sign:
                 return _human_check_result(page, job_id, mode, context, sign)
+
+            closed = next((t for t in CLOSED_TEXTS if t in _page_text(page)), None)
+            if closed:
+                msg = f"İlan kapanmış ('{closed}'); başvuru yapılamaz."
+                update_job_status(job_id, STATUS_APPLY_FAILED, error=msg)
+                log.info("İlan #%s: %s", job_id, msg)
+                return STATUS_APPLY_FAILED, msg
 
             if _found_texts(page, ALREADY_APPLIED_TEXTS):
                 update_job_status(job_id, STATUS_APPLY_UNVERIFIED,
