@@ -30,9 +30,17 @@ def page_settings():
         targets = st.text_area("Aranacak pozisyonlar (her satır bir unvan)", "\n".join(u.get("targets", [])))
         new_pin = st.text_input("Yeni PIN (boş bırakırsanız değişmez; '-' yazarsanız PIN kaldırılır)", type="password")
         new_cv = st.file_uploader("Ana CV'yi değiştir (PDF)", type=["pdf"])
+        st.markdown("**📝 Form cevaplarım** — başvuru formlarında sık sorulan, CV'de olmayan sorular. "
+                    "Boş bırakılan soru çıkarsa bot durur ve size bırakır; asla tahmin etmez.")
+        from ai_engine.form_answers import USER_FIELDS
+        fa = dict(u.get("form_answers") or {})
+        cols = st.columns(len(USER_FIELDS))
+        for col, (k, label) in zip(cols, USER_FIELDS.items()):
+            fa[k] = col.text_input(label, fa.get(k, ""), key=f"fa_{k}")
         if st.form_submit_button("Kaydet", type="primary"):
             upd = dict(name=name.strip() or u["name"], field=field, city=city,
-                       targets=[t.strip() for t in targets.splitlines() if t.strip()])
+                       targets=[t.strip() for t in targets.splitlines() if t.strip()],
+                       form_answers={k: v.strip() for k, v in fa.items() if v.strip()})
             if new_pin and new_pin != "-" and len(new_pin) < 4:
                 st.error("PIN en az 4 hane olmalı.")
                 st.stop()

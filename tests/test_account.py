@@ -41,8 +41,17 @@ class FormFalsePositiveTests(unittest.TestCase):
         self.assertEqual(answer_for("Years of professional experience", "text", ANSWERS), "4")
 
     def test_birth_place_salary_not_filled(self):
-        for label in ("Doğum yeri (il)", "Doğum şehri", "Maaş beklentiniz (şehir bazında)", "Acil durum telefonu"):
+        for label in ("Doğum yeri (il)", "Doğum şehri", "Acil durum telefonu"):
             self.assertIsNone(field_key(label), label)
+        # maaş sorusu tanınır ama kullanıcı cevap girmediyse ASLA doldurulmaz (şehir/yıl yazılmaz)
+        self.assertIsNone(answer_for("Maaş beklentiniz (şehir bazında)", "text", ANSWERS))
+
+    def test_user_given_answers_used(self):
+        a = {**ANSWERS, "salary": "60.000 TL", "notice": "2 hafta"}
+        self.assertEqual(answer_for("Net ücret beklentiniz nedir?", "text", a), "60.000 TL")
+        self.assertEqual(answer_for("Expected salary", "number", a), "60000")
+        self.assertEqual(answer_for("İhbar süreniz nedir?", "text", a), "2 hafta")
+        self.assertIsNone(answer_for("Askerlik durumunuz", "text", a))  # girilmemiş → kullanıcıya kalır
 
     def test_phone_city_still_work(self):
         self.assertEqual(answer_for("Cep telefonu", "tel", ANSWERS), "05451112233")

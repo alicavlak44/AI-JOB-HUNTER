@@ -21,6 +21,19 @@ FIELD_PATTERNS = [
     ("phone", [r"\btelefon", r"\bgsm\b", r"\bcep\b", r"\bphone\b", r"\bmobile\b"]),
     ("city", [r"\bşehir", r"\bikamet", r"\bcity\b", r"\blocation\b", r"\bkonum\b", r"\byaşadığınız il\b"]),
 ]
+# Kullanıcının Ayarlar'dan KENDİSİNİN girdiği cevaplar (CV'de yok; boşsa soru kullanıcıya kalır)
+USER_FIELD_PATTERNS = [
+    ("salary", [r"\b(net |brüt )?(ücret|maaş) beklenti", r"\bsalary expectation", r"\bexpected salary", r"\bdesired salary"]),
+    ("notice", [r"\bihbar süre", r"\bnotice period", r"\bne zaman (işe )?başlayabilir", r"\bstart date",
+                r"\bwhen can you start"]),
+    ("military", [r"\baskerlik", r"\bmilitary service"]),
+    ("license", [r"\behliyet", r"\bdriving licen[cs]e", r"\bdriver'?s licen[cs]e"]),
+    ("relocate", [r"\btaşınma", r"\brelocat", r"\bseyahat engel", r"\bwilling to travel"]),
+]
+USER_FIELDS = {"salary": "Net maaş beklentisi (ör. 60000)", "notice": "İhbar süresi / başlama zamanı (ör. 2 hafta)",
+               "military": "Askerlik durumu (ör. Yapıldı)", "license": "Ehliyet (ör. B sınıfı var)",
+               "relocate": "Taşınma / seyahat (ör. Ankara içi, seyahate engel yok)"}
+
 # Bu ifadeler varsa soru başka bir şeyi soruyor → cevaplama (kullanıcıya kalır)
 NEGATIVE_PATTERNS = [r"\bdoğum", r"\bbirth", r"\bnüfus", r"\bmaaş", r"\bsalary", r"\bnotice", r"\bacil durum",
                      r"\bemergency", r"\breferans", r"\breference", r"\bşirket(in)? (telefon|e-?posta)",
@@ -70,6 +83,9 @@ def answers_from_cv(cv_text, today=None):
 
 def field_key(label):
     low = tr_lower(label or "")
+    for key, patterns in USER_FIELD_PATTERNS:  # maaş/ihbar/askerlik: sadece kullanıcı cevap verdiyse doldurulur
+        if any(re.search(p, low) for p in patterns):
+            return key
     if any(re.search(p, low) for p in NEGATIVE_PATTERNS):
         return None
     for key, patterns in FIELD_PATTERNS:
@@ -85,8 +101,10 @@ def answer_for(label, input_type, answers):
         return None
     if input_type == "email" and key != "email":
         return None
-    if input_type == "number" and key != "years":
+    if input_type == "number" and key not in ("years", "salary"):
         return None
+    if key == "salary" and input_type == "number":
+        return re.sub(r"\D", "", str(answers[key])) or None
     if key == "years" and (input_type not in ("number", "text", "") or SKILL_SPECIFIC.search(tr_lower(label))):
         return None
     return answers[key]

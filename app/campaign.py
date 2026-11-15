@@ -78,7 +78,8 @@ def analyze_job(row, brief=True):
 
 def _default_apply(job_id, url, mode, cv_path):
     from browser.automator import run_application_bot
-    return run_application_bot(job_id, url, mode=mode, cv_path=cv_path)
+    # toplu modda soru çıkan ilanda 90 sn beklenir (kullanıcı başındaysa doldurur), sonra sıradakine geçilir
+    return run_application_bot(job_id, url, mode=mode, cv_path=cv_path, wait_user_ms=90_000)
 
 
 def _default_invite(company, city):

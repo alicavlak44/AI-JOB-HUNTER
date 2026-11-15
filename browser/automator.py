@@ -304,32 +304,62 @@ def try_upload_cv(page, cv_path, fallback_path=None):
 
 # ---------------------------------------------------------------- Başvuru
 def _click_first(page, texts, scope=None):
-    """Görünür ve aktif ilk eşleşen butona tıklar; tıklanan metni döner."""
+    """Görünür ve aktif ilk eşleşen butona tıklar; tıklanan metni döner.
+    Hem erişilebilirlik adına hem GÖRÜNEN YAZIYA bakar: LinkedIn'in 'Kolay Başvuru' düğmesinin adı
+    'Bu işe kolay başvuru yapın' (2026-11-15 canlı test: sadece ada bakıldığı için hiçbir başvuru yapılamıyordu)."""
     root = scope or page
     for text in texts:
-        btn = root.get_by_role("button", name=re.compile(rf"^\s*{re.escape(text)}\b", re.I)).first
-        try:
-            if btn.count() > 0 and btn.is_visible() and btn.is_enabled():
-                btn.click()
-                page.wait_for_timeout(2000)
-                return text
-        except PlaywrightError:
-            continue
+        pat = re.compile(rf"^\s*{re.escape(text)}\b", re.I)
+        candidates = [root.get_by_role("button", name=pat).first,
+                      root.locator("button, [role=button], a[role=button]").filter(has_text=pat).first]
+        for btn in candidates:
+            try:
+                if btn.count() > 0 and btn.is_visible() and btn.is_enabled():
+                    btn.click()
+                    page.wait_for_timeout(2000)
+                    return text
+            except PlaywrightError:
+                continue
     return None
 
 
+# Platformun "insan mısınız" doğrulaması (Kariyer.net 'Basılı Tut' vb.). Bot bunları AŞMAZ; ilanı kullanıcıya bırakır.
+HUMAN_CHECK_TEXTS = ["basılı tut", "insan olduğunuzu", "robot olmadığınızı", "press & hold", "press and hold",
+                     "i'm not a robot", "verify you are human"]
+
+
+def needs_human(page_text):
+    t = (page_text or "").lower().replace("\u0307", "")
+    return next((x for x in HUMAN_CHECK_TEXTS if x in t), None)
+
+
+def _human_check_result(page, job_id, mode, context, sign):
+    shot = _screenshot(page, f"job{job_id}_human_check")
+    msg = (f"Platform insan doğrulaması istedi ('{sign}'). Bot doğrulamayı geçmez; "
+           f"ilanı açıp doğrulamayı ve başvuruyu siz tamamlayın. {shot or ''}").strip()
+    update_job_status(job_id, STATUS_AT_APPLY_SCREEN, error=msg)
+    log.info("İlan #%s: %s", job_id, msg)
+    if mode == "yari":  # kullanıcı başındaysa pencereyi açık bırak
+        _wait_until_closed(context, page, 300_000)
+    return STATUS_AT_APPLY_SCREEN, msg
+
+
 def _empty_required_fields(page):
-    """Doldurulmamış zorunlu form alanı sayısı (bot bunları doldurmaz — kullanıcıya bırakır)."""
+    """Doldurulmamış zorunlu form alanlarının ETİKETLERİ (bot bunları uydurmaz — kullanıcıya bırakır)."""
     try:
         return page.evaluate("""() => {
             const els = [...document.querySelectorAll('input[required], select[required], textarea[required], [aria-required="true"]')];
             return els.filter(e => e.offsetParent !== null && (
                 (e.type === 'checkbox' || e.type === 'radio') ? !document.querySelector(`[name="${e.name}"]:checked`)
                 : !String(e.value || '').trim()
-            )).length;
+            )).map(e => {
+                let l = e.getAttribute('aria-label') || '';
+                if (e.id) { const x = document.querySelector(`label[for="${CSS.escape(e.id)}"]`); if (x) l = x.innerText; }
+                return (l || e.name || 'alan').replace(/\\s+/g, ' ').replace(/\\*$/, '').trim().slice(0, 80);
+            });
         }""")
     except PlaywrightError:
-        return 0
+        return []
 
 
 def _page_text(page):
@@ -396,13 +426,14 @@ def _cv_answers():
     try:
         from ai_engine.brain import read_cv_text
         from ai_engine.form_answers import answers_from_cv
-        return answers_from_cv(read_cv_text())
+        # CV'deki gerçekler + kullanıcının KENDİ yazdığı form cevapları (maaş beklentisi vb.)
+        return {**answers_from_cv(read_cv_text()), **{k: v for k, v in (ctx.user().get("form_answers") or {}).items() if v}}
     except Exception:
         log.exception("CV'den form cevapları çıkarılamadı")
         return {}
 
 
-def run_application_bot(job_id, job_url, mode="yari", cv_path=None):
+def run_application_bot(job_id, job_url, mode="yari", cv_path=None, wait_user_ms=300_000):
     """
     mode="yari": Başvuru formunu açar, kullanıcı tamamlar. Pencere kapanınca onay metni aranır.
     mode="tam":  Formda adım adım ilerler; boş zorunlu alan görürse DURUR ve kullanıcıya bırakır.
@@ -429,6 +460,10 @@ def run_application_bot(job_id, job_url, mode="yari", cv_path=None):
                 return None, (f"🛡️ {platform} bot koruması belirtisi gösterdi ({block}). Hesabı korumak için "
                               f"başvurular {guard.settings.BLOCK_COOLDOWN_HOURS:.0f} saat durduruldu.")
 
+            sign = needs_human(_page_text(page))
+            if sign:
+                return _human_check_result(page, job_id, mode, context, sign)
+
             if _found_texts(page, ALREADY_APPLIED_TEXTS):
                 update_job_status(job_id, STATUS_APPLY_UNVERIFIED,
                                   error="İlan sayfası bu ilana daha önce başvurulduğunu gösteriyor; kontrol edin.")
@@ -447,6 +482,10 @@ def run_application_bot(job_id, job_url, mode="yari", cv_path=None):
                 return STATUS_APPLY_FAILED, msg
             log.info("İlan #%s: '%s' butonuna tıklandı (mod: %s)", job_id, clicked, mode)
             guard.record(platform, guard.APPLY, f"job {job_id}")
+            page.wait_for_timeout(1500)
+            sign = needs_human(_page_text(page))
+            if sign:
+                return _human_check_result(page, job_id, mode, context, sign)
 
             if mode == "tam":
                 answers = _cv_answers()
@@ -459,10 +498,15 @@ def run_application_bot(job_id, job_url, mode="yari", cv_path=None):
                     empty = _empty_required_fields(page)
                     if empty:
                         _screenshot(page, f"job{job_id}_needs_input")
-                        msg = f"Formda {empty} boş zorunlu alan var; tamamlamanız için pencere açık bırakıldı."
+                        msg = ("Cevabınızı bekleyen soru: " + "; ".join(empty) +
+                               ". (Profil ve Ayarlar → 'Form cevaplarım'a eklerseniz bot sonraki başvurularda kullanır. "
+                               "LinkedIn yarım başvuruyu 'Devam Ediyor' altında saklar.)")
                         update_job_status(job_id, STATUS_AT_APPLY_SCREEN, error=msg)
                         log.info("İlan #%s: %s", job_id, msg)
-                        _wait_until_closed(context, page, 300_000)
+                        _wait_until_closed(context, page, wait_user_ms)
+                        if page.is_closed() or not _is_confirmed(page, baseline):
+                            # kullanıcı tamamlamadı (veya süre doldu): durum 'Başvuru Ekranında' kalsın, 'Doğrulanamadı' değil
+                            return STATUS_AT_APPLY_SCREEN, msg
                         break
                     guard.human_pause(1.5, 4)
                     if _click_first(page, SUBMIT_BUTTON_TEXTS):

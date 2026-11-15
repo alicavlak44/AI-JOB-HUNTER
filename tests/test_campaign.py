@@ -132,7 +132,7 @@ class FormAnswerTests(unittest.TestCase):
         self.assertEqual(field_key("E-posta adresi"), "email")
         self.assertEqual(field_key("How many years of work experience do you have with Linux?"), "years")
         self.assertEqual(field_key("Konum (şehir)"), "city")
-        self.assertIsNone(field_key("Maaş beklentiniz nedir?"))  # bilinmeyen → kullanıcıya kalır
+        self.assertIsNone(answer_for("Maaş beklentiniz nedir?", "text", {"years": "4"}))  # kullanıcı girmedi → boş
 
     def test_answer_respects_input_type(self):
         a = {"email": "x@y.com", "phone": "05451112233", "city": "Ankara", "years": "4"}
