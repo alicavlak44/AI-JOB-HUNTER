@@ -1,0 +1,19 @@
+venv/
+__pycache__/
+*.pyc
+.env
+logs/
+# Tarayıcı oturumu ve çerezler (giriş bilgisi içerir)
+database/bot_profile/
+database/kariyer_state.json
+# Kişisel veriler
+database/*.db
+documents/
+reports/
+.DS_Store
+
+# Eski sürüm (kişisel bilgi içerir)
+legacy/
+# Kullanıcı profilleri / CV oluşturucu verileri
+profiles/
+*.db-journal

@@ -1,0 +1,447 @@
+"""CV Stüdyosu: CV içe aktar → düzenle → yapay zeka ile iyileştir (uydurmasız) → şablonla PDF/DOCX üret.
+
+Çok kişili: her kişinin verisi profiles/<kısa-ad>/ altında (git'e girmez).
+Profil sözlüğü:
+  name, headline, email, phone, city, links[], summary,
+  skills: [{"group", "items": []}],
+  experience: [{"title", "company", "city", "dates", "bullets": [{"text", "user": bool}]}],
+  education: [str], certificates: [str], languages: str, extras: [str]
+"user": True → bilgiyi kullanıcı kendisi ekledi (CV'de yoktu); denetimde kaynak sayılır.
+"""
+import base64
+import html
+import io
+import json
+import os
+import re
+from datetime import datetime
+
+from app.logger import get_logger
+from app.settings import BASE_DIR
+
+log = get_logger("cv_studio")
+
+PROFILES_DIR = os.path.join(BASE_DIR, "profiles")
+TEMPLATES = {
+    "modern": "Modern (fotoğraflı, iki sütun)",
+    "ats": "ATS uyumlu (sade, tek sütun — başvuru sistemleri için en güvenli)",
+    "klasik": "Klasik (vesikalık fotoğraflı, tek sütun, resmi)",
+    "zarif": "Zarif (üst bantta fotoğraf, tek sütun, ferah)",
+}
+EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
+PHONE_RE = re.compile(r"(?:\+?90[\s-]*)?\(?0?\s*\(?5\d{2}\)?[\s-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}")
+CITIES = ["Ankara", "İstanbul", "İzmir", "Bursa", "Antalya", "Konya", "Eskişehir", "Kocaeli", "Adana", "Kayseri"]
+
+
+# ---------------------------------------------------------------- yardımcılar
+def slugify(name):
+    s = (name or "profil").strip().lower()
+    s = s.translate(str.maketrans("çğıöşüâîİ", "cgiosuaii"))
+    return re.sub(r"[^a-z0-9]+", "-", s).strip("-") or "profil"
+
+
+def empty_profile():
+    return {"name": "", "headline": "", "email": "", "phone": "", "city": "", "links": [], "summary": "",
+            "skills": [], "experience": [], "education": [], "certificates": [], "languages": "", "extras": []}
+
+
+def extract_text(data: bytes, filename: str) -> str:
+    """PDF / DOCX / TXT → düz metin."""
+    ext = os.path.splitext(filename or "")[1].lower()
+    if ext == ".pdf":
+        from pypdf import PdfReader
+        return "\n".join((p.extract_text() or "") for p in PdfReader(io.BytesIO(data)).pages)
+    if ext == ".docx":
+        import docx
+        d = docx.Document(io.BytesIO(data))
+        parts = [p.text for p in d.paragraphs]
+        for t in d.tables:
+            for row in t.rows:
+                parts += [c.text for c in row.cells]
+        return "\n".join(parts)
+    return data.decode("utf-8", errors="ignore")
+
+
+_SPACED_HYPHEN = re.compile(r"(?<=[A-Za-zÇĞİÖŞÜçğıöşü]) - (?=[A-Za-zÇĞİÖŞÜçğıöşü])")
+
+
+def fix_pdf_artifacts(text: str) -> str:
+    """PDF'ten çıkarmada oluşan 'Site - to - Site' / 'Hyper - V' boşluklarını düzeltir (sayı aralıkları korunur)."""
+    return _SPACED_HYPHEN.sub("-", text or "")
+
+
+TYPO_HINTS = {r"(?<![Vv])\bMware\b": "VMware"}
+
+
+def typo_warnings(text: str):
+    """CV'de olası yazım hataları (otomatik DÜZELTİLMEZ, kullanıcıya sorulur)."""
+    return [f"'{m.group(0)}' → '{fix}' olabilir" for pat, fix in TYPO_HINTS.items() for m in re.finditer(pat, text or "")]
+
+
+def profile_from_text(text: str) -> dict:
+    """CV metnini yapılandırılmış profile çevirir (kural tabanlı ayrıştırıcı; model gerekmez)."""
+    from ai_engine.cv_builder import parse_cv
+    text = fix_pdf_artifacts(text)
+    cv = parse_cv(text)
+    p = empty_profile()
+    p["name"], p["headline"], p["summary"] = cv.name.title() if cv.name.isupper() else cv.name, cv.headline, cv.summary
+    contact = " ".join(cv.contact) + "\n" + text[:1500]
+    m = EMAIL_RE.search(contact)
+    p["email"] = m.group(0) if m else ""
+    m = PHONE_RE.search(contact)
+    p["phone"] = m.group(0).strip() if m else ""
+    p["city"] = next((c for c in CITIES if re.search(rf"\b{c}\b", " ".join(cv.contact))), "") or \
+        next((c for c in CITIES if c in text[:600]), "")
+    p["skills"] = [{"group": g, "items": list(items)} for g, items in cv.skill_groups]
+    p["experience"] = [{"title": e.title, "company": e.company, "city": e.city, "dates": e.dates,
+                        "bullets": [{"text": b.text, "user": False} for b in e.bullets]} for e in cv.experience]
+    p["education"] = [" · ".join(x for x in lines if x) for lines in cv.education]
+    p["certificates"] = [" · ".join(x for x in lines if x and x.strip().lower() != "tarih") for lines in cv.certificates]
+    p["languages"] = cv.languages
+    p["_warnings"] = list(cv.warnings) + typo_warnings(text)
+    return p
+
+
+def source_text(profile: dict, original: str = "") -> str:
+    """Uydurma denetiminin kaynağı: orijinal CV + kullanıcının kendi eklediği bilgiler."""
+    user = [b["text"] for e in profile.get("experience", []) for b in e.get("bullets", []) if b.get("user")]
+    return "\n".join([original or ""] + user + list(profile.get("extras", [])))
+
+
+# ---------------------------------------------------------------- depolama (kişi başına klasör)
+def _dir(slug):
+    d = os.path.join(PROFILES_DIR, slug)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def list_profiles():
+    if not os.path.isdir(PROFILES_DIR):
+        return []
+    return sorted(s for s in os.listdir(PROFILES_DIR) if os.path.exists(os.path.join(PROFILES_DIR, s, "profile.json")))
+
+
+def save_profile(slug, profile, original_text=None):
+    d = _dir(slug)
+    with open(os.path.join(d, "profile.json"), "w", encoding="utf-8") as f:
+        json.dump({k: v for k, v in profile.items() if not k.startswith("_")}, f, ensure_ascii=False, indent=2)
+    if original_text is not None:
+        with open(os.path.join(d, "kaynak_cv.txt"), "w", encoding="utf-8") as f:
+            f.write(original_text)
+
+
+def load_profile(slug):
+    d = os.path.join(PROFILES_DIR, slug)
+    with open(os.path.join(d, "profile.json"), encoding="utf-8") as f:
+        p = {**empty_profile(), **json.load(f)}
+    src = os.path.join(d, "kaynak_cv.txt")
+    original = open(src, encoding="utf-8").read() if os.path.exists(src) else ""
+    return p, original
+
+
+def save_photo(slug, data: bytes, filename: str):
+    ext = os.path.splitext(filename)[1].lower() or ".jpg"
+    for old in ("photo.jpg", "photo.jpeg", "photo.png", "photo.webp"):
+        try:
+            os.remove(os.path.join(_dir(slug), old))
+        except FileNotFoundError:
+            pass
+    with open(os.path.join(_dir(slug), f"photo{ext}"), "wb") as f:
+        f.write(data)
+
+
+def photo_data_uri(slug, portrait=False):
+    names = (("photo_vesikalik.jpg", "jpeg"),) if portrait else ()
+    for name, mime in names + (("photo.jpg", "jpeg"), ("photo.jpeg", "jpeg"), ("photo.png", "png"), ("photo.webp", "webp")):
+        path = os.path.join(PROFILES_DIR, slug, name)
+        if os.path.exists(path):
+            return f"data:image/{mime};base64," + base64.b64encode(open(path, "rb").read()).decode()
+    return None
+
+
+# ---------------------------------------------------------------- doluluk puanı ("albeni" ölçüsü)
+_NUM = re.compile(r"\d")
+
+
+def completeness(profile: dict, has_photo=False):
+    """0-100 puan ve eksik listesi. İşverenin ilk 6 saniyede baktığı şeylere göre ağırlıklı."""
+    checks = [
+        (10, bool(profile.get("name")), "Ad soyad"),
+        (10, bool(profile.get("headline")), "Başlık (hedef unvan) — ör. 'Ağ ve Sistem Yöneticisi'"),
+        (10, bool(profile.get("email")) and bool(profile.get("phone")), "E-posta ve telefon"),
+        (10, 250 <= len(profile.get("summary", "")) <= 900, "3-5 cümlelik özet (250-900 karakter)"),
+        (15, sum(len(g["items"]) for g in profile.get("skills", [])) >= 10, "En az 10 beceri"),
+        (15, len(profile.get("experience", [])) >= 1 and all(len(e["bullets"]) >= 2 for e in profile["experience"][:2]),
+         "Son iki işte en az 2'şer madde"),
+        (10, any(_NUM.search(b["text"]) for e in profile.get("experience", []) for b in e["bullets"]),
+         "Ölçülebilir sonuç (sayı içeren madde: kullanıcı sayısı, sunucu sayısı, % iyileşme...)"),
+        (10, bool(profile.get("education")), "Eğitim"),
+        (5, bool(profile.get("certificates")), "Sertifika"),
+        (5, bool(profile.get("languages")), "Yabancı dil"),
+    ]
+    score = sum(w for w, ok, _ in checks if ok)
+    missing = [label for w, ok, label in checks if not ok]
+    if not has_photo:
+        missing.append("(isteğe bağlı) Fotoğraf — Türkiye'de çoğu işveren bekler; ATS şablonunda kullanılmaz")
+    long_bullets = [b["text"][:40] for e in profile.get("experience", []) for b in e["bullets"] if len(b["text"]) > 220]
+    if long_bullets:
+        missing.append(f"{len(long_bullets)} madde çok uzun (220+ karakter): kısaltın")
+    return score, missing
+
+
+# ---------------------------------------------------------------- yapay zeka iyileştirme (uydurmasız)
+_IMPROVE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "headline": {"type": "string"},
+        "summary": {"type": "string"},
+        "bullets": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"exp": {"type": "integer"}, "idx": {"type": "integer"}, "text": {"type": "string"}},
+            "required": ["exp", "idx", "text"], "additionalProperties": False}},
+    },
+    "required": ["headline", "summary", "bullets"],
+    "additionalProperties": False,
+}
+
+
+def _profile_prompt(p):
+    lines = [f"BAŞLIK: {p['headline']}", f"ÖZET: {p['summary']}"]
+    for i, e in enumerate(p["experience"]):
+        lines.append(f"\nDENEYİM {i}: {e['title']} — {e['company']} ({e['dates']})")
+        lines += [f"  [{i}.{j}] {b['text']}" for j, b in enumerate(e["bullets"])]
+    lines.append("\nBECERİLER: " + "; ".join(f"{g['group']}: {', '.join(g['items'])}" for g in p["skills"]))
+    if p.get("extras"):
+        lines.append("EK BİLGİLER (kullanıcı ekledi): " + "; ".join(p["extras"]))
+    return "\n".join(lines)
+
+
+def improve(profile: dict, original: str, target_title: str = "", model=None):
+    """Başlık, özet ve maddeler için öneriler. Her öneri kaynakla karşılaştırılır; uydurma içeren REDDEDİLİR.
+    Dönüş: {"accepted": [{"where","old","new"}], "rejected": [{"where","new","why"}]}"""
+    from ai_engine.brain import _chat_json
+    from ai_engine.cv_builder import check_text
+    from ai_engine.cv_profile import build_profile
+    src = source_text(profile, original)
+    try:
+        years = round(build_profile(original).professional_months / 12, 1) if original else None
+    except Exception:
+        years = None
+    system = ("Sen kıdemli bir Türk İK uzmanı ve CV editörüsün. Görevin CV'yi daha etkileyici YAZMAK, "
+              "ama ASLA yeni bilgi eklememek. Yeni beceri, sayı, sertifika, şirket, unvan, süre UYDURMA. "
+              "Sadece istenen JSON'u döndür.")
+    user = f"""HEDEF UNVAN: {target_title or profile.get('headline') or '-'}
+
+MEVCUT CV:
+{_profile_prompt(profile)}
+
+GÖREV:
+- headline: Hedef unvana uygun, en güçlü 3 teknolojiyi içeren başlık (en fazla 120 karakter).
+- summary: 3-4 cümlelik, birinci tekil şahıs, etkileyici ama ölçülü özet. SADECE CV'deki bilgiler.
+- bullets: Etkisi zayıf maddeleri yeniden yaz: güçlü fiille başlasın ("Yönettim", "Kurdum", "Tasarladım"),
+  varsa sayıyı öne çıkarsın, tek cümle, en fazla 180 karakter. exp ve idx köşeli parantezdeki numaralar.
+  Zaten iyi olan maddeyi listeye EKLEME. En fazla 10 madde."""
+    data = _chat_json(system, user, "cv_improve", _IMPROVE_SCHEMA, temperature=0.3, model=model)
+    out = {"accepted": [], "rejected": []}
+
+    def judge(where, old, new):
+        new = (new or "").strip()
+        if not new or new == old:
+            return
+        why = check_text(new, src, years)
+        (out["rejected"] if why else out["accepted"]).append(
+            {"where": where, "old": old, "new": new, **({"why": why} if why else {})})
+
+    judge("headline", profile.get("headline", ""), data.get("headline"))
+    judge("summary", profile.get("summary", ""), data.get("summary"))
+    for b in data.get("bullets", []):
+        i, j = b.get("exp"), b.get("idx")
+        try:
+            old = profile["experience"][i]["bullets"][j]["text"]
+        except (IndexError, KeyError, TypeError):
+            continue
+        judge(f"exp:{i}:{j}", old, b.get("text"))
+    log.info("CV iyileştirme: %d öneri kabul, %d red", len(out["accepted"]), len(out["rejected"]))
+    return out
+
+
+def apply_suggestion(profile: dict, s: dict):
+    if s["where"] in ("headline", "summary"):
+        profile[s["where"]] = s["new"]
+    elif s["where"].startswith("exp:"):
+        _, i, j = s["where"].split(":")
+        profile["experience"][int(i)]["bullets"][int(j)]["text"] = s["new"]
+    return profile
+
+
+# ---------------------------------------------------------------- şablonlar → HTML → PDF / DOCX
+def _e(s):
+    return html.escape(s or "")
+
+
+_BASE_CSS = """
+@page { size: A4; margin: 0; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: 'Helvetica Neue', Arial, sans-serif; color: #1f2933; font-size: 10.5pt; line-height: 1.45; }
+h1 { margin: 0; font-size: 22pt; letter-spacing: .5px; }
+h2 { font-size: 10.5pt; text-transform: uppercase; letter-spacing: 1.5px; margin: 16px 0 6px; padding-bottom: 3px; }
+ul { margin: 4px 0 0 0; padding-left: 16px; } li { margin-bottom: 3px; }
+.job { margin-bottom: 10px; page-break-inside: avoid; }
+.job-head { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; }
+.job-sub { color: #52606d; font-size: 9.5pt; }
+.chip { display: inline-block; padding: 2px 8px; margin: 2px 3px 2px 0; border-radius: 10px; font-size: 9pt; }
+"""
+
+
+def _experience_html(p):
+    out = []
+    for e in p["experience"]:
+        bullets = "".join(f"<li>{_e(b['text'])}</li>" for b in e["bullets"])
+        out.append(f"""<div class="job"><div class="job-head"><span>{_e(e['title'])}</span><span class="job-sub">{_e(e['dates'])}</span></div>
+<div class="job-sub">{_e(e['company'])}{' · ' + _e(e['city']) if e.get('city') else ''}</div><ul>{bullets}</ul></div>""")
+    return "".join(out)
+
+
+def _list_html(items):
+    return "".join(f"<li>{_e(x)}</li>" for x in items if x)
+
+
+def render_html(p: dict, template="modern", photo=None, accent="#1f4e79"):
+    contact = " · ".join(_e(x) for x in (p.get("email"), p.get("phone"), p.get("city")) if x)
+    links = " · ".join(_e(x) for x in p.get("links", []) if x)
+    extras = _list_html(p.get("extras", []))
+    if template == "ats":
+        skills = "".join(f"<p><b>{_e(g['group'])}:</b> {_e(', '.join(g['items']))}</p>" for g in p["skills"])
+        return f"""<!doctype html><html lang="tr"><meta charset="utf-8"><style>{_BASE_CSS}
+body {{ padding: 42px 52px; }} h2 {{ border-bottom: 1px solid #333; }} p {{ margin: 2px 0; }}</style>
+<h1>{_e(p['name'])}</h1><div>{_e(p['headline'])}</div><div class="job-sub">{contact}{' · ' + links if links else ''}</div>
+<h2>Özet</h2><p>{_e(p['summary'])}</p><h2>Deneyim</h2>{_experience_html(p)}
+<h2>Beceriler</h2>{skills}<h2>Eğitim</h2><ul>{_list_html(p['education'])}</ul>
+{'<h2>Sertifikalar</h2><ul>' + _list_html(p['certificates']) + '</ul>' if p.get('certificates') else ''}
+{'<h2>Ek Bilgiler</h2><ul>' + extras + '</ul>' if extras else ''}
+{'<h2>Diller</h2><p>' + _e(p['languages']) + '</p>' if p.get('languages') else ''}</html>"""
+
+    img = f'<img src="{photo}" class="photo">' if photo else ""
+    chips = "".join(f"<div class='sk-group'><div class='sk-title'>{_e(g['group'])}</div>" +
+                    "".join(f"<span class='chip'>{_e(i)}</span>" for i in g["items"]) + "</div>" for g in p["skills"])
+    if template == "zarif":
+        skills = "".join(f"<div class='sk-group'><span class='sk-title'>{_e(g['group'])}</span> " +
+                         "".join(f"<span class='chip'>{_e(i)}</span>" for i in g["items"]) + "</div>" for g in p["skills"])
+        return f"""<!doctype html><html lang="tr"><meta charset="utf-8"><style>{_BASE_CSS}
+.band {{ background: linear-gradient(120deg, {accent}, #3e7cb1); color: #fff; padding: 30px 48px; display: flex; gap: 24px; align-items: center; }}
+.band .photo {{ width: 110px; height: 110px; border-radius: 50%; object-fit: cover; border: 4px solid rgba(255,255,255,.7); }}
+.band h1 {{ color: #fff; }} .band .sub {{ font-size: 12.5pt; opacity: .95; }} .band .ct {{ font-size: 9pt; opacity: .9; margin-top: 4px; }}
+.body {{ padding: 6px 48px 30px; }} h2 {{ color: {accent}; }} h2::after {{ content: ""; display: block; width: 42px; height: 3px; background: {accent}; margin-top: 3px; }}
+.chip {{ background: #eef3f8; color: #1f2933; }} .sk-group {{ margin-bottom: 5px; }} .sk-title {{ font-weight: 600; font-size: 9.5pt; margin-right: 4px; }}
+.two {{ display: grid; grid-template-columns: 1fr 1fr; gap: 0 28px; }}</style>
+<div class="band">{img}<div><h1>{_e(p['name'])}</h1><div class="sub">{_e(p['headline'])}</div>
+<div class="ct">{contact}{' · ' + links if links else ''}</div></div></div>
+<div class="body"><h2>Özet</h2><p>{_e(p['summary'])}</p><h2>Deneyim</h2>{_experience_html(p)}
+<h2>Beceriler</h2>{skills}
+<div class="two"><div><h2>Eğitim</h2><ul>{_list_html(p['education'])}</ul>
+{'<h2>Diller</h2><p>' + _e(p['languages']) + '</p>' if p.get('languages') else ''}</div>
+<div>{'<h2>Sertifikalar</h2><ul>' + _list_html(p['certificates']) + '</ul>' if p.get('certificates') else ''}
+{'<h2>Ek Bilgiler</h2><ul>' + extras + '</ul>' if extras else ''}</div></div></div></html>"""
+
+    if template == "klasik":
+        return f"""<!doctype html><html lang="tr"><meta charset="utf-8"><style>{_BASE_CSS}
+body {{ padding: 40px 50px; font-family: Georgia, 'Times New Roman', serif; }}
+.top {{ display: flex; gap: 22px; align-items: center; border-bottom: 2px solid {accent}; padding-bottom: 14px; }}
+.photo {{ width: 96px; height: 120px; object-fit: cover; border-radius: 4px; }}
+h2 {{ color: {accent}; border-bottom: 1px solid #d9e2ec; }} .chip {{ background: #f0f4f8; }}
+.sk-group {{ margin-bottom: 4px; }} .sk-title {{ font-weight: 600; font-size: 9.5pt; }}</style>
+<div class="top">{img}<div><h1 style="color:{accent}">{_e(p['name'])}</h1><div style="font-size:12pt">{_e(p['headline'])}</div>
+<div class="job-sub">{contact}</div><div class="job-sub">{links}</div></div></div>
+<h2>Özet</h2><p>{_e(p['summary'])}</p><h2>Deneyim</h2>{_experience_html(p)}<h2>Beceriler</h2>{chips}
+<h2>Eğitim</h2><ul>{_list_html(p['education'])}</ul>
+{'<h2>Sertifikalar</h2><ul>' + _list_html(p['certificates']) + '</ul>' if p.get('certificates') else ''}
+{'<h2>Ek Bilgiler</h2><ul>' + extras + '</ul>' if extras else ''}
+{'<h2>Diller</h2><p>' + _e(p['languages']) + '</p>' if p.get('languages') else ''}</html>"""
+
+    # modern: solda renkli kenar sütunu
+    return f"""<!doctype html><html lang="tr"><meta charset="utf-8"><style>{_BASE_CSS}
+.wrap {{ display: grid; grid-template-columns: 34% 66%; min-height: 297mm; }}
+.side {{ background: {accent}; color: #fff; padding: 34px 22px; }}
+.side h2 {{ color: #fff; border-bottom: 1px solid rgba(255,255,255,.35); }}
+.side .chip {{ background: rgba(255,255,255,.16); color: #fff; }}
+.sk-group {{ margin-bottom: 8px; }} .sk-title {{ font-size: 9pt; opacity: .85; margin-bottom: 2px; }}
+.photo {{ width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 3px solid rgba(255,255,255,.6);
+         display: block; margin: 0 auto 14px; }}
+.main {{ padding: 34px 30px; }} .main h2 {{ color: {accent}; border-bottom: 2px solid {accent}; }}
+.contact div {{ font-size: 9pt; margin-bottom: 3px; word-break: break-word; }}</style>
+<div class="wrap"><div class="side">{img}<h2>İletişim</h2><div class="contact">
+{''.join(f'<div>{_e(x)}</div>' for x in (p.get('email'), p.get('phone'), p.get('city')) if x)}
+{''.join(f'<div>{_e(x)}</div>' for x in p.get('links', []) if x)}</div>
+<h2>Beceriler</h2>{chips}
+{'<h2>Diller</h2><div>' + _e(p['languages']) + '</div>' if p.get('languages') else ''}
+{'<h2>Sertifikalar</h2><ul>' + _list_html(p['certificates']) + '</ul>' if p.get('certificates') else ''}</div>
+<div class="main"><h1 style="color:{accent}">{_e(p['name'])}</h1><div style="font-size:12.5pt;margin-top:2px">{_e(p['headline'])}</div>
+<h2>Özet</h2><p>{_e(p['summary'])}</p><h2>Deneyim</h2>{_experience_html(p)}
+<h2>Eğitim</h2><ul>{_list_html(p['education'])}</ul>
+{'<h2>Ek Bilgiler</h2><ul>' + extras + '</ul>' if extras else ''}</div></div></html>"""
+
+
+def html_to_pdf(html_str: str, path: str):
+    """Başsız Chromium ile A4 PDF (Playwright zaten kurulu; ek program gerekmez)."""
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
+            page.set_content(html_str, wait_until="load")
+            page.pdf(path=path, format="A4", print_background=True, margin={"top": "0", "bottom": "0", "left": "0", "right": "0"})
+        finally:
+            browser.close()
+    return path
+
+
+def to_docx(p: dict, path: str):
+    """ATS için sade Word dosyası (başvuru sistemleri tablo/iki sütunu iyi okumaz)."""
+    import docx
+    from docx.shared import Pt
+    d = docx.Document()
+    st = d.styles["Normal"]
+    st.font.name, st.font.size = "Calibri", Pt(10.5)
+    d.add_heading(p["name"], level=0)
+    if p.get("headline"):
+        d.add_paragraph(p["headline"])
+    d.add_paragraph(" · ".join(x for x in (p.get("email"), p.get("phone"), p.get("city"), *p.get("links", [])) if x))
+    for title, body in (("Özet", p.get("summary")),):
+        if body:
+            d.add_heading(title, level=1)
+            d.add_paragraph(body)
+    d.add_heading("Deneyim", level=1)
+    for e in p["experience"]:
+        para = d.add_paragraph()
+        para.add_run(f"{e['title']} — {e['company']}").bold = True
+        para.add_run(f"   {e['dates']}{' · ' + e['city'] if e.get('city') else ''}")
+        for b in e["bullets"]:
+            d.add_paragraph(b["text"], style="List Bullet")
+    d.add_heading("Beceriler", level=1)
+    for g in p["skills"]:
+        para = d.add_paragraph()
+        para.add_run(f"{g['group']}: ").bold = True
+        para.add_run(", ".join(g["items"]))
+    for title, items in (("Eğitim", p.get("education")), ("Sertifikalar", p.get("certificates")), ("Ek Bilgiler", p.get("extras"))):
+        if items:
+            d.add_heading(title, level=1)
+            for x in items:
+                d.add_paragraph(x, style="List Bullet")
+    if p.get("languages"):
+        d.add_heading("Diller", level=1)
+        d.add_paragraph(p["languages"])
+    d.save(path)
+    return path
+
+
+def export(slug, profile, template="modern", accent="#1f4e79"):
+    """Seçili şablonla PDF (+ ATS ise DOCX) üretir. Dönüş: {"pdf": yol, "docx": yol|None}"""
+    out_dir = os.path.join(_dir(slug), "cikti")
+    os.makedirs(out_dir, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M")
+    base = os.path.join(out_dir, f"{slugify(profile.get('name'))}_{template}_{stamp}")
+    photo = None if template == "ats" else photo_data_uri(slug, portrait=template == "klasik")
+    pdf = html_to_pdf(render_html(profile, template, photo, accent), base + ".pdf")
+    docx_path = to_docx(profile, base + ".docx") if template == "ats" else None
+    log.info("CV üretildi: %s", pdf)
+    return {"pdf": pdf, "docx": docx_path}
