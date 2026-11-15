@@ -32,7 +32,8 @@ class FormFalsePositiveTests(unittest.TestCase):
             self.assertIsNone(answer_for(label, "text", ANSWERS), label)
 
     def test_skill_specific_years_left_to_user(self):
-        for label in ("How many years of experience do you have with Kubernetes?",
+        for label in ("How many years of Telecommunications experience do you currently have?",  # Argela, 15.11
+                      "How many years of experience do you have with Kubernetes?",
                       "Kubernetes ile kaç yıl deneyiminiz var?", "Years of experience in Python"):
             self.assertIsNone(answer_for(label, "number", ANSWERS), label)
 

@@ -15,8 +15,11 @@ CITIES = ["Ankara", "İstanbul", "İzmir", "Bursa", "Antalya", "Konya", "Eskişe
 
 # (anahtar, etiket kalıpları) — etiket Türkçe küçük harfe çevrilip aranır
 FIELD_PATTERNS = [
-    ("years", [r"\bkaç yıl(lık)? (iş |toplam |profesyonel )?deneyim", r"\btoplam (iş )?deneyim", r"\byıl(lık)? deneyim(iniz)?\b",
-               r"\byears? of (total |professional |work )?experience\b", r"\bhow many years\b"]),
+    # SADECE genel toplam deneyim soruları. "How many years of Telecommunications experience" gibi
+    # belirli alan/beceri soruları toplam yılla CEVAPLANMAZ (2026-11-15 Argela formunda yanlışlıkla 4 yazıldı).
+    ("years", [r"\bkaç yıl(lık)? (toplam |profesyonel )?iş deneyim", r"\btoplam (iş )?deneyim",
+               r"\bkaç yıllık deneyim(iniz)? var\b", r"\byears? of (total |professional )?work experience\b",
+               r"\btotal years of experience\b", r"\byears? of (total |professional |work )?experience\b", r"\byears of (total |professional )?experience (do you have|in total)\b"]),
     ("email", [r"\be-?posta\b", r"\bemail\b", r"\be-mail\b"]),
     ("phone", [r"\btelefon", r"\bgsm\b", r"\bcep\b", r"\bphone\b", r"\bmobile\b"]),
     ("city", [r"\bşehir", r"\bikamet", r"\bcity\b", r"\blocation\b", r"\bkonum\b", r"\byaşadığınız il\b"]),
@@ -39,7 +42,8 @@ NEGATIVE_PATTERNS = [r"\bdoğum", r"\bbirth", r"\bnüfus", r"\bmaaş", r"\bsalar
                      r"\bemergency", r"\breferans", r"\breference", r"\bşirket(in)? (telefon|e-?posta)",
                      r"\bcompany (phone|email)"]
 # "Kubernetes ile kaç yıl", "years of experience with Linux" → belirli bir beceri soruluyor; toplam yıl YAZILMAZ
-SKILL_SPECIFIC = re.compile(r"\b(with|in|using|on)\b\s+\S|\S+\s+ile\b|\S+\s+(konusunda|alanında)\b", re.I)
+SKILL_SPECIFIC = re.compile(r"\b(with|in|using|on)\b\s+\S|\S+\s+ile\b|\S+\s+(konusunda|alanında)\b"
+                            r"|years of (?!total\b|work\b|professional\b)\w+ experience", re.I)
 
 
 def _digits_phone(raw):
