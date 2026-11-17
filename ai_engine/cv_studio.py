@@ -22,12 +22,24 @@ from app.settings import BASE_DIR
 log = get_logger("cv_studio")
 
 PROFILES_DIR = os.path.join(BASE_DIR, "profiles")
-TEMPLATES = {
-    "modern": "Modern (fotoğraflı, iki sütun)",
-    "ats": "ATS uyumlu (sade, tek sütun — başvuru sistemleri için en güvenli)",
-    "klasik": "Klasik (vesikalık fotoğraflı, tek sütun, resmi)",
-    "zarif": "Zarif (üst bantta fotoğraf, tek sütun, ferah)",
+# Şablon bilgileri: ad, kime uygun, fotoğraf kullanır mı, ATS (başvuru sistemi) dostu mu
+TEMPLATE_INFO = {
+    "modern": {"label": "Modern", "desc": "Renkli kenar sütunu, yuvarlak fotoğraf, iki sütun.",
+               "best": "Özel sektör, teknoloji firmaları", "photo": True, "ats": False},
+    "ats": {"label": "ATS uyumlu", "desc": "Sade, tek sütun, fotoğrafsız. Başvuru sistemleri en rahat bunu okur.",
+            "best": "Kariyer.net / LinkedIn / şirket portalı başvuruları", "photo": False, "ats": True},
+    "klasik": {"label": "Klasik", "desc": "Vesikalık fotoğraf, tırnaklı yazı tipi, resmi görünüm.",
+               "best": "Kamu, savunma sanayii, bankalar", "photo": True, "ats": False},
+    "zarif": {"label": "Zarif", "desc": "Üstte renkli bant ve yuvarlak fotoğraf, ferah tek sütun.",
+              "best": "Genel kullanım, insan kaynakları", "photo": True, "ats": False},
+    "kompakt": {"label": "Kompakt Teknik", "desc": "Mühendis tarzı: solda bölüm adı, sağda içerik; tek sayfaya sığar.",
+                "best": "BT, sistem/ağ, yazılım pozisyonları", "photo": False, "ats": True},
+    "yonetici": {"label": "Kurumsal Yönetici", "desc": "Ortalı başlık, 'Öne çıkan başarılar' bölümü, ağırbaşlı düzen.",
+                 "best": "Kıdemli / yönetici pozisyonları, holdingler", "photo": False, "ats": True},
+    "zaman": {"label": "Zaman Çizelgesi", "desc": "Deneyim dikey zaman çizgisinde, fotoğraflı, beceriler kartlarda.",
+              "best": "Kariyer gelişimini göstermek isteyenler", "photo": True, "ats": False},
 }
+TEMPLATES = {k: f"{v['label']} — {v['desc']}" for k, v in TEMPLATE_INFO.items()}
 EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
 PHONE_RE = re.compile(r"(?:\+?90[\s-]*)?\(?0?\s*\(?5\d{2}\)?[\s-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}")
 CITIES = ["Ankara", "İstanbul", "İzmir", "Bursa", "Antalya", "Konya", "Eskişehir", "Kocaeli", "Adana", "Kayseri"]
@@ -42,7 +54,8 @@ def slugify(name):
 
 def empty_profile():
     return {"name": "", "headline": "", "email": "", "phone": "", "city": "", "links": [], "summary": "",
-            "skills": [], "experience": [], "education": [], "certificates": [], "languages": "", "extras": []}
+            "skills": [], "experience": [], "education": [], "certificates": [], "languages": "", "extras": [],
+            "qa_log": [], "template": "modern", "accent": "#1f4e79"}
 
 
 def extract_text(data: bytes, filename: str) -> str:
@@ -105,7 +118,8 @@ def profile_from_text(text: str) -> dict:
 def source_text(profile: dict, original: str = "") -> str:
     """Uydurma denetiminin kaynağı: orijinal CV + kullanıcının kendi eklediği bilgiler."""
     user = [b["text"] for e in profile.get("experience", []) for b in e.get("bullets", []) if b.get("user")]
-    return "\n".join([original or ""] + user + list(profile.get("extras", [])))
+    answers = [q.get("answer", "") for q in profile.get("qa_log", []) if q.get("answer")]  # CV Koçu cevapları
+    return "\n".join([original or ""] + user + list(profile.get("extras", [])) + answers)
 
 
 # ---------------------------------------------------------------- depolama (kişi başına klasör)
@@ -296,6 +310,12 @@ def info_loss(old: str, new: str):
     return problems
 
 
+def check_text_only(new, src, years=None):
+    """Uydurma denetimi (bilgi kaybı hariç)."""
+    from ai_engine.cv_builder import check_text
+    return check_text(new, src, years)
+
+
 def apply_suggestion(profile: dict, s: dict):
     if s["where"] in ("headline", "summary"):
         profile[s["where"]] = s["new"]
@@ -331,6 +351,12 @@ def _experience_html(p):
         out.append(f"""<div class="job"><div class="job-head"><span>{_e(e['title'])}</span><span class="job-sub">{_e(e['dates'])}</span></div>
 <div class="job-sub">{_e(e['company'])}{' · ' + _e(e['city']) if e.get('city') else ''}</div><ul>{bullets}</ul></div>""")
     return "".join(out)
+
+
+def highlights(p, n=4):
+    """'Öne çıkan başarılar': sayı içeren (ölçülebilir) maddeler, en çok sayı içerenler önce. Yeni bilgi üretmez."""
+    found = [b["text"] for e in p.get("experience", []) for b in e.get("bullets", []) if _NUM.search(b["text"])]
+    return sorted(found, key=lambda t: -len(_NUM.findall(t)))[:n]
 
 
 def _list_html(items):
@@ -388,6 +414,76 @@ h2 {{ color: {accent}; border-bottom: 1px solid #d9e2ec; }} .chip {{ background:
 {'<h2>Sertifikalar</h2><ul>' + _list_html(p['certificates']) + '</ul>' if p.get('certificates') else ''}
 {'<h2>Ek Bilgiler</h2><ul>' + extras + '</ul>' if extras else ''}
 {'<h2>Diller</h2><p>' + _e(p['languages']) + '</p>' if p.get('languages') else ''}</html>"""
+
+    if template == "kompakt":
+        def row(title, body):
+            return f"<div class='row'><div class='lab'>{title}</div><div class='val'>{body}</div></div>" if body else ""
+        skills = "".join(f"<div><b>{_e(g['group'])}:</b> {_e(', '.join(g['items']))}</div>" for g in p["skills"])
+        return f"""<!doctype html><html lang="tr"><meta charset="utf-8"><style>{_BASE_CSS}
+body {{ padding: 30px 40px; font-size: 9.8pt; line-height: 1.38; }}
+.head {{ display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid {accent}; padding-bottom: 8px; }}
+.head h1 {{ font-size: 20pt; color: {accent}; }} .head .ct {{ text-align: right; font-size: 8.8pt; color: #52606d; }}
+.row {{ display: grid; grid-template-columns: 112px 1fr; gap: 14px; padding: 9px 0; border-bottom: 1px solid #e4e7eb; }}
+.lab {{ font-size: 8.6pt; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: {accent}; padding-top: 2px; }}
+.job {{ margin-bottom: 7px; }} ul {{ margin-top: 2px; }} li {{ margin-bottom: 1px; }}</style>
+<div class="head"><div><h1>{_e(p['name'])}</h1><div style="font-size:11pt">{_e(p['headline'])}</div></div>
+<div class="ct">{'<br>'.join(_e(x) for x in (p.get('email'), p.get('phone'), p.get('city'), *p.get('links', [])) if x)}</div></div>
+{row('Özet', _e(p['summary']))}{row('Deneyim', _experience_html(p))}{row('Beceriler', skills)}
+{row('Eğitim', '<ul>' + _list_html(p['education']) + '</ul>' if p.get('education') else '')}
+{row('Sertifikalar', '<ul>' + _list_html(p['certificates']) + '</ul>' if p.get('certificates') else '')}
+{row('Diller', _e(p.get('languages')))}{row('Ek Bilgiler', '<ul>' + extras + '</ul>' if extras else '')}</html>"""
+
+    if template == "yonetici":
+        hl = highlights(p)
+        skills = "".join(f"<div class='sk'><div class='sk-title'>{_e(g['group'])}</div><div>{_e(', '.join(g['items']))}</div></div>"
+                         for g in p["skills"])
+        return f"""<!doctype html><html lang="tr"><meta charset="utf-8"><style>{_BASE_CSS}
+body {{ padding: 44px 56px; }} .top {{ text-align: center; }}
+.top h1 {{ font-family: Georgia, 'Times New Roman', serif; font-size: 25pt; letter-spacing: 3px; text-transform: uppercase; color: #102a43; }}
+.top .sub {{ font-size: 11.5pt; color: {accent}; letter-spacing: 1px; margin-top: 3px; }}
+.top .ct {{ font-size: 9pt; color: #52606d; margin-top: 6px; }}
+.rule {{ height: 1px; background: #bcccdc; margin: 14px 0 4px; }}
+h2 {{ text-align: center; color: #102a43; font-family: Georgia, serif; letter-spacing: 2.5px; }}
+h2::after {{ content: ""; display: block; width: 36px; height: 2px; background: {accent}; margin: 4px auto 0; }}
+.hl {{ background: #f5f7fa; border-left: 3px solid {accent}; padding: 8px 14px 8px 28px; }}
+.skills {{ display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px 18px; }} .sk-title {{ font-weight: 700; font-size: 9.2pt; color: {accent}; }}
+.two {{ display: grid; grid-template-columns: 1fr 1fr; gap: 0 30px; }}</style>
+<div class="top"><h1>{_e(p['name'])}</h1><div class="sub">{_e(p['headline'])}</div>
+<div class="ct">{contact}{' · ' + links if links else ''}</div></div><div class="rule"></div>
+<h2>Profil</h2><p>{_e(p['summary'])}</p>
+{'<h2>Öne Çıkan Başarılar</h2><ul class="hl">' + _list_html(hl) + '</ul>' if hl else ''}
+<h2>Deneyim</h2>{_experience_html(p)}<h2>Yetkinlikler</h2><div class="skills">{skills}</div>
+<div class="two"><div><h2>Eğitim</h2><ul>{_list_html(p['education'])}</ul>
+{'<h2>Diller</h2><p>' + _e(p['languages']) + '</p>' if p.get('languages') else ''}</div>
+<div>{'<h2>Sertifikalar</h2><ul>' + _list_html(p['certificates']) + '</ul>' if p.get('certificates') else ''}
+{'<h2>Ek Bilgiler</h2><ul>' + extras + '</ul>' if extras else ''}</div></div></html>"""
+
+    if template == "zaman":
+        tl = "".join(f"""<div class="ev"><div class="dot"></div><div class="when">{_e(e['dates'])}</div>
+<div class="what"><b>{_e(e['title'])}</b> <span class="job-sub">— {_e(e['company'])}{' · ' + _e(e['city']) if e.get('city') else ''}</span>
+<ul>{''.join(f"<li>{_e(b['text'])}</li>" for b in e['bullets'])}</ul></div></div>""" for e in p["experience"])
+        cards = "".join(f"<div class='card'><div class='sk-title'>{_e(g['group'])}</div>" +
+                        "".join(f"<span class='chip'>{_e(i)}</span>" for i in g["items"]) + "</div>" for g in p["skills"])
+        return f"""<!doctype html><html lang="tr"><meta charset="utf-8"><style>{_BASE_CSS}
+body {{ padding: 36px 46px; }}
+.top {{ display: flex; gap: 22px; align-items: center; margin-bottom: 6px; }}
+.top .photo {{ width: 104px; height: 104px; border-radius: 18px; object-fit: cover; }}
+.top h1 {{ color: {accent}; }} .top .sub {{ font-size: 12pt; }} .top .ct {{ font-size: 9pt; color: #52606d; margin-top: 4px; }}
+h2 {{ color: {accent}; }} .tl {{ position: relative; margin-left: 8px; border-left: 2px solid {accent}; padding-left: 0; }}
+.ev {{ position: relative; display: grid; grid-template-columns: 118px 1fr; gap: 10px; padding: 0 0 10px 18px; page-break-inside: avoid; }}
+.dot {{ position: absolute; left: -7px; top: 3px; width: 12px; height: 12px; border-radius: 50%; background: #fff; border: 3px solid {accent}; }}
+.when {{ font-size: 9pt; color: #52606d; font-weight: 600; }}
+.cards {{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }}
+.card {{ border: 1px solid #e4e7eb; border-radius: 8px; padding: 7px 9px; }} .sk-title {{ font-weight: 700; font-size: 9pt; margin-bottom: 3px; }}
+.chip {{ background: #eef3f8; }} .two {{ display: grid; grid-template-columns: 1fr 1fr; gap: 0 28px; }}</style>
+<div class="top">{img}<div><h1>{_e(p['name'])}</h1><div class="sub">{_e(p['headline'])}</div>
+<div class="ct">{contact}{' · ' + links if links else ''}</div></div></div>
+<h2>Özet</h2><p>{_e(p['summary'])}</p><h2>Kariyer Yolculuğu</h2><div class="tl">{tl}</div>
+<h2>Beceriler</h2><div class="cards">{cards}</div>
+<div class="two"><div><h2>Eğitim</h2><ul>{_list_html(p['education'])}</ul>
+{'<h2>Diller</h2><p>' + _e(p['languages']) + '</p>' if p.get('languages') else ''}</div>
+<div>{'<h2>Sertifikalar</h2><ul>' + _list_html(p['certificates']) + '</ul>' if p.get('certificates') else ''}
+{'<h2>Ek Bilgiler</h2><ul>' + extras + '</ul>' if extras else ''}</div></div></html>"""
 
     # modern: solda renkli kenar sütunu
     return f"""<!doctype html><html lang="tr"><meta charset="utf-8"><style>{_BASE_CSS}
@@ -465,14 +561,20 @@ def to_docx(p: dict, path: str):
     return path
 
 
+def template_photo(slug, template):
+    """Şablon fotoğraf kullanıyorsa fotoğrafın data URI'si (klasik: vesikalık), yoksa None."""
+    info = TEMPLATE_INFO.get(template, {})
+    return photo_data_uri(slug, portrait=template == "klasik") if info.get("photo") else None
+
+
 def export(slug, profile, template="modern", accent="#1f4e79"):
-    """Seçili şablonla PDF (+ ATS ise DOCX) üretir. Dönüş: {"pdf": yol, "docx": yol|None}"""
+    """Seçili şablonla PDF + sade (ATS) Word üretir. Dönüş: {"pdf": yol, "docx": yol}"""
     out_dir = os.path.join(_dir(slug), "cikti")
     os.makedirs(out_dir, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M")
     base = os.path.join(out_dir, f"{slugify(profile.get('name'))}_{template}_{stamp}")
-    photo = None if template == "ats" else photo_data_uri(slug, portrait=template == "klasik")
+    photo = template_photo(slug, template)
     pdf = html_to_pdf(render_html(profile, template, photo, accent), base + ".pdf")
-    docx_path = to_docx(profile, base + ".docx") if template == "ats" else None
+    docx_path = to_docx(profile, base + ".docx")  # sade Word her şablonda (ATS sistemleri için)
     log.info("CV üretildi: %s", pdf)
     return {"pdf": pdf, "docx": docx_path}
