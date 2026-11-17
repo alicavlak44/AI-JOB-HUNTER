@@ -3,12 +3,20 @@ import streamlit as st
 
 CSS = """
 <style>
-/* Daha sade görünüm: kart benzeri metrikler, sıkı boşluklar */
-div[data-testid="stMetric"] {background: var(--secondary-background-color); border-radius: 12px; padding: 12px 16px;}
-div[data-testid="stMetricLabel"] p {font-size: 0.85rem; opacity: 0.8;}
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap');
+/* Kâğıt + mürekkep: ince çizgiler, keskin köşeler, gölgesiz kartlar */
+div[data-testid="stMetric"] {background: transparent; border: 1px solid var(--border-color, #E2D9CA);
+  border-radius: 4px; padding: 12px 16px;}
+div[data-testid="stMetricLabel"] p {font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; opacity: .7;}
+div[data-testid="stMetricValue"] {font-family: 'Fraunces', Georgia, serif;}
 .block-container {padding-top: 4.2rem; max-width: 1200px;}
 .ko-sub {opacity: 0.75; margin-top: -0.6rem; margin-bottom: 1rem;}
 .ko-step {font-weight: 600; margin: 0.6rem 0 0.2rem;}
+h1, h2, h3, h4 {letter-spacing: -.01em;}
+.ko-over {font-family: 'IBM Plex Mono', monospace; font-size: .72rem; letter-spacing: .16em; text-transform: uppercase;
+  color: #6B6257; margin-bottom: -.4rem;}
+.ko-sub {color: #3D362E; max-width: 48rem;}
+hr {border-color: #E2D9CA !important;}
 </style>
 """
 
@@ -18,8 +26,9 @@ def txt(value):
     return value.strip() if isinstance(value, str) else ""
 
 
-def header(title, subtitle=""):
+def header(title, subtitle="", over="Kariyer Otonomu"):
     st.markdown(CSS, unsafe_allow_html=True)
+    st.markdown(f"<div class='ko-over'>{over}</div>", unsafe_allow_html=True)
     st.title(title)
     if subtitle:
         st.markdown(f"<div class='ko-sub'>{subtitle}</div>", unsafe_allow_html=True)

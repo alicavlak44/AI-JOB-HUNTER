@@ -15,7 +15,7 @@ def _connections():
     for col, plat in zip(cols, ("LinkedIn", "Kariyer.net")):
         with col:
             c1, c2 = st.columns([1.4, 1])
-            c1.markdown(f"{'🟢' if sessions[plat] else '🔴'} **{plat}** {'bağlı' if sessions[plat] else 'bağlı değil'}")
+            c1.markdown(f"**{plat}** · :{'green' if sessions[plat] else 'red'}[{'bağlı' if sessions[plat] else 'bağlı değil'}]")
             label = "Yeniden bağlan" if sessions[plat] else f"{plat}'e bağlan"
             if c2.button(label, key=f"connect_{plat}", width="stretch", type="secondary" if sessions[plat] else "primary"):
                 with st.spinner(f"Açılan Chrome penceresinde {plat} hesabınıza giriş yapın (en fazla 5 dk)."):
@@ -27,14 +27,14 @@ def _connections():
 
 
 def page_home():
-    header("⚡ Kariyer Otonomu", "İlan bul → analiz et → isabetli başvur → İK ağını büyüt. Üst menüden ilerleyin; sağ üstte kullanıcı menünüz var.")
+    header("Bugün ne yapıyoruz?", "İlan bul → analiz et → isabetli başvur → İK ağını büyüt. Üst menüden ilerleyin; sağ üstte kullanıcı menünüz var.")
     show_flash("home")
 
-    st.subheader("🔗 Hesaplar")
+    st.subheader("Hesaplar")
     _connections()
 
     jobs = get_all_jobs()
-    st.subheader("📊 Bugün")
+    st.subheader("Bugün")
     today = stats.summary(jobs)["today"]
     g_li = guard.status("LinkedIn")
     c = st.columns(4)
@@ -45,7 +45,7 @@ def page_home():
     if g_li["engel"]:
         st.error(f"🛡️ LinkedIn bot işlemleri durduruldu: {g_li['engel']}")
 
-    st.subheader("📈 Başarı oranı")
+    st.subheader("Başarı oranı")
     metrics = account.success_metrics()
     if metrics:
         for col, (label, (value, frac)) in zip(st.columns(len(metrics)), metrics.items()):
@@ -56,13 +56,13 @@ def page_home():
     scores = [x for x in jobs["ATS Uyum"].map(stats.parse_score).dropna()] if not jobs.empty else []
     recs = account.recommendations(avg_score=round(sum(scores) / len(scores)) if scores else None)
     if recs:
-        st.subheader("🎯 Şimdi yapılacaklar")
+        st.subheader("Şimdi yapılacaklar")
         for prio, title, body in recs[:3]:
-            st.markdown(f"{'🔴' if prio == 1 else '🟠' if prio == 2 else '🟡'} **{title}** — {body}")
+            st.markdown(f":{'red' if prio == 1 else 'orange' if prio == 2 else 'gray'}[**{('Önce bu', 'Sonra', 'İsterseniz')[min(prio, 3) - 1]}**] · **{title}** — {body}")
         if len(recs) > 3:
             st.caption(f"+{len(recs) - 3} öneri daha → 📈 Başarı sayfası")
 
-    st.subheader("➡️ Sıradaki adım")
+    st.subheader("Sıradaki adım")
     from app import campaign
     pending, ready = campaign.unanalyzed_jobs(jobs), campaign.eligible_jobs(jobs)
     if jobs.empty:

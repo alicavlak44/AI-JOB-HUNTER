@@ -141,7 +141,7 @@ def _job_detail(jobs):
 
 
 def page_jobs():
-    header("🔎 İlanlar", "Ara, listeyi incele, bir ilanı seçip analiz et veya başvur.")
+    header("İlanlar", "Ara, listeyi incele, bir ilanı seçip analiz et veya başvur.")
     with st.container(border=True):
         _search()
     show_flash("jobs")
@@ -151,7 +151,7 @@ def page_jobs():
         st.info("Henüz ilan yok. Yukarıdan '🔎 İlanları getir'.")
         return
 
-    st.subheader(f"📋 İlanlar ({len(jobs)})")
+    st.subheader(f"İlanlar ({len(jobs)})")
     f1, f2 = st.columns([3, 1])
     status_filter = f1.multiselect("Duruma göre süz", sorted(jobs["Durum"].dropna().unique()), placeholder="Tümü")
     if f2.button("🧹 İşlenmemişleri temizle", width="stretch"):
@@ -161,6 +161,6 @@ def page_jobs():
     st.dataframe(view[["id", "Kaynak", "Pozisyon", "Şirket", "Şehir", "ATS Uyum", "Durum", "url"]], width="stretch",
                  hide_index=True, height=300, column_config={"url": st.column_config.LinkColumn("İlan", display_text="Aç")})
 
-    st.subheader("🧭 Seçili ilan")
+    st.subheader("Seçili ilan")
     with st.container(border=True):
         _job_detail(view if not view.empty else jobs)

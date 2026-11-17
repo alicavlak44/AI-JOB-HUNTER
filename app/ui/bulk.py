@@ -9,7 +9,7 @@ from database.db_manager import get_all_jobs
 
 
 def page_bulk():
-    header("🚀 Toplu Başvuru", "Sadece işaretlediğiniz ilanlara başvurulur. Hesap koruması her adımda uygulanır.")
+    header("Toplu Başvuru", "Sadece işaretlediğiniz ilanlara başvurulur. Hesap koruması her adımda uygulanır.")
     jobs = get_all_jobs()
     if jobs.empty:
         st.info("Henüz ilan yok → 🔎 İlanlar sayfasından ilan getirin.")
@@ -68,5 +68,5 @@ def page_bulk():
             st.rerun()
 
     if st.session_state.get("campaign_results"):
-        st.subheader("📋 Son sonuç")
+        st.subheader("Son sonuç")
         st.dataframe(pd.DataFrame(st.session_state["campaign_results"]), hide_index=True, width="stretch")

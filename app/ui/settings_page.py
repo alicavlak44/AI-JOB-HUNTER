@@ -12,14 +12,14 @@ from database.db_manager import reset_database
 
 
 def page_settings():
-    header("⚙️ Ayarlar", "Sistem durumu, koruma limitleri ve bakım.")
+    header("Ayarlar", "Sistem durumu, koruma limitleri ve bakım.")
     ok, msg = check_lm_studio()
     (st.success if ok else st.error)(f"🧠 Yapay zeka (LM Studio): {msg} · model: {settings.LM_MODEL}")
     cv = context.cv_path()
     (st.success if os.path.exists(cv) else st.error)(
         f"📄 Ana CV: {os.path.relpath(cv, settings.BASE_DIR) if os.path.exists(cv) else 'yok — aşağıdan yükleyin'}")
 
-    st.subheader("👤 Profilim")
+    st.subheader("Profilim")
     u = context.user()
     with st.form("profil"):
         c1, c2, c3 = st.columns(3)
@@ -53,7 +53,7 @@ def page_settings():
             st.session_state.pop(f"positions_{context.current()}", None)
             st.success("Kaydedildi.")
 
-    st.subheader("🧠 Soru hafızası")
+    st.subheader("Soru hafızası")
     st.caption("Başvuru formlarında çıkan soruların SİZİN cevaplarınız. Bot aynı soruyu gördüğünde bunu kullanır "
                "(Evet/Hayır, liste ve metin). Bot cevabını bilmediği soruda durur ve soruyu buraya ekler.")
     uq = context.user()
@@ -74,7 +74,7 @@ def page_settings():
     else:
         st.caption("Henüz kayıtlı soru yok.")
 
-    st.subheader("🛡️ Hesap koruması")
+    st.subheader("Hesap koruması")
     rows = []
     for plat in ("LinkedIn", "Kariyer.net"):
         g = guard.status(plat)

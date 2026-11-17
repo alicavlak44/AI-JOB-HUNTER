@@ -46,19 +46,19 @@ else:
 init_db()
 
 PAGES = {
-    "home": st.Page(page_home, title="Özet", icon="🏠", default=True),
-    "jobs": st.Page(page_jobs, title="İlanlar", icon="🔎", url_path="ilanlar"),
-    "bulk": st.Page(page_bulk, title="Toplu Başvuru", icon="🚀", url_path="toplu-basvuru"),
-    "network": st.Page(page_network, title="İK Ağı", icon="🤝", url_path="ik-agi"),
-    "success": st.Page(page_success, title="Başarı ve Öneriler", icon="📈", url_path="basari"),
-    "settings": st.Page(page_settings, title="Profil ve Ayarlar", icon="⚙️", url_path="ayarlar"),
-    "cv": st.Page(page_cv, title="CV Stüdyosu", icon="📄", url_path="cv-studyosu"),
+    "home": st.Page(page_home, title="Özet", icon=":material/home:", default=True),
+    "jobs": st.Page(page_jobs, title="İlanlar", icon=":material/work:", url_path="ilanlar"),
+    "bulk": st.Page(page_bulk, title="Toplu Başvuru", icon=":material/send:", url_path="toplu-basvuru"),
+    "network": st.Page(page_network, title="İK Ağı", icon=":material/group:", url_path="ik-agi"),
+    "success": st.Page(page_success, title="Başarı ve Öneriler", icon=":material/insights:", url_path="basari"),
+    "settings": st.Page(page_settings, title="Profil ve Ayarlar", icon=":material/settings:", url_path="ayarlar"),
+    "cv": st.Page(page_cv, title="CV Stüdyosu", icon=":material/description:", url_path="cv-studyosu"),
 }
 st.session_state["_pages"] = PAGES  # sayfalar arası bağlantılar için
 
 nav = st.navigation({
-    "💼 İş Ara": [PAGES["home"], PAGES["jobs"], PAGES["bulk"], PAGES["network"], PAGES["success"], PAGES["settings"]],
-    "📄 CV Oluştur": [PAGES["cv"]],
+    "İş Ara": [PAGES["home"], PAGES["jobs"], PAGES["bulk"], PAGES["network"], PAGES["success"], PAGES["settings"]],
+    "CV Stüdyosu": [PAGES["cv"]],
 }, position="top")
 
 user_menu(PAGES)

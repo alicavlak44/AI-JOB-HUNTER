@@ -1,0 +1,17 @@
+# Kariyer Otonomu teması: kâğıt + mürekkep (dergi sayfası hissi), tek vurgu rengi
+[theme]
+base = "light"
+primaryColor = "#B4532A"            # kiremit — editörün kalemi
+backgroundColor = "#FAF7F1"         # krem kâğıt
+secondaryBackgroundColor = "#F1EBE0"
+textColor = "#1F1B16"               # mürekkep
+linkColor = "#8A3A1C"
+borderColor = "#E2D9CA"
+showWidgetBorder = true
+baseRadius = "4px"
+font = "'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif"
+headingFont = "'Fraunces', Georgia, 'Times New Roman', serif"
+headingFontWeights = [600, 600, 600, 600, 600, 600]
+
+[client]
+toolbarMode = "minimal"   # sağ üstteki "Deploy" düğmesi gizli

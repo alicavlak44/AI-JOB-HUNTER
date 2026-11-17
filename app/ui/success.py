@@ -9,7 +9,7 @@ from database.db_manager import get_all_jobs
 
 
 def page_success():
-    header("📈 Başarı ve Öneriler", "Hesaplarınızdan sadece okuyarak: başvurular, görüntülenmeler, mülakatlar, bağlantılar.")
+    header("Başarı ve Öneriler", "Hesaplarınızdan sadece okuyarak: başvurular, görüntülenmeler, mülakatlar, bağlantılar.")
     li, kn = account.latest_snapshot("LinkedIn"), account.latest_snapshot("Kariyer.net")
     c1, c2 = st.columns([1, 2])
     if c1.button("🔄 Hesaplarımdan senkronla", type="primary" if not li else "secondary", width="stretch",
@@ -34,7 +34,7 @@ def page_success():
     jobs = get_all_jobs()
     scores = [x for x in jobs["ATS Uyum"].map(stats.parse_score).dropna()] if not jobs.empty else []
     recs = account.recommendations(li, kn, avg_score=round(sum(scores) / len(scores)) if scores else None)
-    st.subheader("🎯 Başarı oranını artırmak için")
+    st.subheader("Başarı oranını artırmak için")
     if not recs:
         st.success("Göstergeler iyi görünüyor." if li else "Önce senkronlayın.")
     for prio, title, body in recs:

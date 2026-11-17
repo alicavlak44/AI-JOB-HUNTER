@@ -77,7 +77,7 @@ def user_menu(pages):
     u = context.user()
     st.markdown(CSS, unsafe_allow_html=True)  # üst boşluk her sayfada aynı olsun
     _, right = st.columns([5, 1.5])
-    with right.popover(f"👤 {u['name']}", width="stretch"):
+    with right.popover(u["name"], icon=":material/person:", width="stretch"):
         st.caption(f"{context.FIELDS.get(u.get('field'), '')} · {u.get('city', '')}")
         st.page_link(pages["settings"], label="Profil ve ayarlar", icon="⚙️")
         others = {s: x["name"] for s, x in context.load_users().items() if s != context.current()}

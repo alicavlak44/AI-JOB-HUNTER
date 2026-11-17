@@ -9,7 +9,7 @@ from browser.automator import find_hr_people, invite_people
 
 
 def page_network():
-    header("🤝 İK Ağı", "Şehirdeki İK yöneticilerine notsuz bağlantı daveti. Ağınızdaki ve davet ettiğiniz kişiler hiç gelmez.")
+    header("İK Ağı", "Şehirdeki İK yöneticilerine notsuz bağlantı daveti. Ağınızdaki ve davet ettiğiniz kişiler hiç gelmez.")
     inv = guard.status("LinkedIn")["bağlantı daveti"]
     left = max(0, MAX_DAILY_INVITES - int(inv["bugün"].split("/")[0]))
     kc = account.known_counts()
@@ -66,6 +66,6 @@ def page_network():
             st.rerun()
 
     if st.session_state.get("hr_invite_results"):
-        st.subheader("📋 Son davet sonucu")
+        st.subheader("Son davet sonucu")
         st.dataframe(pd.DataFrame(st.session_state["hr_invite_results"]), hide_index=True, width="stretch",
                      column_config={"Profil": st.column_config.LinkColumn("Profil", display_text="Aç")})
