@@ -202,3 +202,10 @@ def build_hr_search_url(company_name, city="Ankara"):
     clean_comp = company_name.split("A.Ş")[0].split("Ltd")[0].strip()
     query = f"{clean_comp} İnsan Kaynakları OR HR OR Talent Acquisition OR İşe Alım {city}"
     return f"https://www.linkedin.com/search/results/people/?keywords={urllib.parse.quote(query)}"
+
+
+def build_it_manager_search_url(company_name, city="Ankara"):
+    """Şirketin BT / Bilgi İşlem yöneticilerini LinkedIn'de bulan doğrudan hedef URL."""
+    clean_comp = company_name.split("A.Ş")[0].split("Ltd")[0].strip()
+    query = f"{clean_comp} Bilgi İşlem Müdürü OR Bilgi Teknolojileri Müdürü OR IT Manager OR CIO {city}"
+    return f"https://www.linkedin.com/search/results/people/?keywords={urllib.parse.quote(query)}"

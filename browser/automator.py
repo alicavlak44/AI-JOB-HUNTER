@@ -746,6 +746,20 @@ def open_linkedin_hr_hunter(hr_search_url):
 # ---------------------------------------------------------------- LinkedIn İK davetleri
 HR_TERMS = ["insan kaynakları", "i̇nsan kaynakları", "ik ", "ik|", " ik", "human resources", "hr ", " hr", "hrbp",
             "talent", "yetenek", "işe alım", "recruit", "people & culture", "people and culture"]
+# BT yöneticisi: unvanda BT alanı VE yöneticilik birlikte geçmeli ("Yazılım Mühendisi" ya da "Satış Müdürü" değil)
+_IT_AREA_RE = re.compile(r"(?<![\wçğıöşü])(?:bilgi işlem|bilgi teknoloji\w*|bilişim|it|bt|information technolog\w*|"
+                         r"altyapi|infrastructure|sistem|system|network|ağ|siber|cyber|bilgi güvenliği|"
+                         r"information security)(?![\wçğıöşü])")
+_MANAGER_RE = re.compile(r"(?<![\wçğıöşü])(?:müdür\w*|direktör\w*|director|manager|head of|yönetici\w*|"
+                         r"şef\w*|lead|cio|cto|ciso|chief information\w*|grup lideri)(?![\wçğıöşü])")
+_CIO_RE = re.compile(r"(?<![\wçğıöşü])(?:cio|ciso|chief information\w*)(?![\wçğıöşü])")
+
+
+def is_it_manager(text):
+    t = tr_lower(text or "").replace("ı", "i")  # tr_lower('IT') = 'ıt' → 'it'
+    return bool(_CIO_RE.search(t) or (_IT_AREA_RE.search(t) and _MANAGER_RE.search(t)))
+
+
 CONNECT_NAME_RE = re.compile(r"bağlantı kurmak için davet et|invite .* to connect", re.IGNORECASE)
 # LinkedIn yeni arayüzde açılır pencereler için yerel <dialog> öğesi kullanıyor (role="dialog" YOK) — ikisini de ara
 DIALOG_SEL = "[role=dialog], [role=alertdialog], dialog[open]"
@@ -773,7 +787,7 @@ def company_key(company):
     return " ".join(words[:2])
 
 
-def pick_hr_profiles(cards, company, limit=1):
+def pick_hr_profiles(cards, company, limit=1, role="hr"):
     """Arama sonucu kartlarından şirketle eşleşen İK kişilerini seçer.
     cards: [{"url": ..., "text": ...}] — şirket adı kartta geçmeyen kişiler ALINMAZ (rastgele davet yok)."""
     key = company_key(company)
@@ -783,7 +797,7 @@ def pick_hr_profiles(cards, company, limit=1):
         # tam şirket anahtarı ('ankara otomotiv'), kelime sınırıyla ('koç' ≠ 'kariyer koçu')
         if not key or not re.search(rf"(?<![\wçğıöşü]){re.escape(key)}(?![\wçğıöşü])", text):
             continue
-        if not any(t in text for t in HR_TERMS):
+        if not (is_it_manager(text) if role == "it" else any(t in text for t in HR_TERMS)):
             continue
         if any(t in text for t in PENDING_TEXTS) or degree_of(c.get("text")) == 1:
             continue
@@ -1040,16 +1054,19 @@ def invite_people(people, on_progress=None):
     return results
 
 
-def send_hr_invites(company, city="Ankara", max_invites=1, dry_run=False):
-    """Şirketin İK yöneticilerine notsuz LinkedIn daveti gönderir (guard limitleriyle).
+def send_hr_invites(company, city="Ankara", max_invites=1, dry_run=False, role="hr"):
+    """Şirketin İK (role="hr") ya da BT yöneticilerine (role="it") notsuz LinkedIn daveti gönderir (guard limitleriyle).
     Aynı şirkete 30 gün içinde tekrar davet gönderilmez. Dönüş: {"sent": [...], "skipped": [...], "error": str|None}"""
-    from browser.scraper import build_hr_search_url
+    from browser.scraper import build_hr_search_url, build_it_manager_search_url
+    search_url = build_it_manager_search_url if role == "it" else build_hr_search_url
+    who = "BT yöneticisi" if role == "it" else "İK yöneticisi"
     out = {"sent": [], "skipped": [], "error": None}
     key = company_key(company)
+    tag = f"{key}|bt" if role == "it" else key  # İK ve BT davetleri ayrı sayılır
     if not key:
         out["error"] = "Şirket adı boş"
         return out
-    if guard.done_recently("LinkedIn", guard.INVITE, f"şirket={key};"):
+    if guard.done_recently("LinkedIn", guard.INVITE, f"şirket={tag};"):
         out["skipped"].append(f"{company}: son 30 günde bu şirkete zaten davet gönderildi")
         return out
     decision = guard.check("LinkedIn", guard.INVITE)
@@ -1060,8 +1077,8 @@ def send_hr_invites(company, city="Ankara", max_invites=1, dry_run=False):
         return out
     try:
         with _browser() as (context, page):
-            page.goto(build_hr_search_url(company, city))
-            guard.record("LinkedIn", guard.SCRAPE, f"şirket İK araması: {company}")
+            page.goto(search_url(company, city))
+            guard.record("LinkedIn", guard.SCRAPE, f"şirket {who} araması: {company}")
             page.wait_for_timeout(int(guard.random.uniform(3000, 5000)))
             block = guard.detect_block(_page_text(page), url=page.url)
             if block:
@@ -1072,17 +1089,17 @@ def send_hr_invites(company, city="Ankara", max_invites=1, dry_run=False):
                 if not _wait_for_login(context, page, "LinkedIn"):
                     out["error"] = "LinkedIn girişi yapılmadı — üstteki 'LinkedIn'e Bağlan' ile bir kez giriş yapın."
                     return out
-                page.goto(build_hr_search_url(company, city))
+                page.goto(search_url(company, city))
                 page.wait_for_timeout(int(guard.random.uniform(3000, 5000)))
-            people = pick_hr_profiles(page.evaluate(_CARDS_JS), company, limit=max_invites)
+            people = pick_hr_profiles(page.evaluate(_CARDS_JS), company, limit=max_invites, role=role)
             if not people:
-                out["skipped"].append(f"{company}: şirketle eşleşen İK yöneticisi bulunamadı")
+                out["skipped"].append(f"{company}: şirketle eşleşen {who} bulunamadı")
                 return out
             for person in people:
                 if dry_run:
                     out["skipped"].append(f"(deneme) gönderilecekti: {person['url']}")
                     continue
-                decision = guard.check("LinkedIn", guard.INVITE)
+                decision = guard.wait_turn("LinkedIn", guard.INVITE)  # kişiler arası en az aralığı bekle
                 if not decision.ok:
                     out["error"] = "🛡️ " + decision.reason
                     break
@@ -1092,7 +1109,7 @@ def send_hr_invites(company, city="Ankara", max_invites=1, dry_run=False):
                     out["error"] = f"🛡️ LinkedIn uyarı verdi ({info}); davetler durduruldu."
                     break
                 if ok:
-                    guard.record("LinkedIn", guard.INVITE, f"şirket={key}; kişi={info}; url={person['url']}")
+                    guard.record("LinkedIn", guard.INVITE, f"şirket={tag}; kişi={info}; url={person['url']}")
                     out["sent"].append(info)
                     log.info("İK daveti gönderildi: %s (%s)", info, company)
                 else:

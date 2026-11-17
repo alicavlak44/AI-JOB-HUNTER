@@ -161,6 +161,19 @@ class HRPickTests(unittest.TestCase):
     def test_limit(self):
         self.assertEqual(len(pick_hr_profiles(self.CARDS, "ASELSAN", limit=1)), 1)
 
+    def test_it_manager_role(self):
+        cards = [
+            {"url": "b1", "text": "Murat Kaya\nBilgi İşlem Müdürü - Aselsan\nAnkara"},
+            {"url": "b2", "text": "Ece Su\nYazılım Mühendisi at ASELSAN"},
+            {"url": "b3", "text": "Okan Er\nSatış Müdürü | Aselsan"},
+            {"url": "b4", "text": "Deniz Ak\nIT Infrastructure Manager at Aselsan"},
+            {"url": "b5", "text": "Sena Gül\nCIO @ ASELSAN"},
+            {"url": "b6", "text": "Ayşe Yılmaz\nİnsan Kaynakları Müdürü - ASELSAN"},
+        ]
+        got = [p["url"] for p in pick_hr_profiles(cards, "Aselsan", limit=10, role="it")]
+        self.assertEqual(got, ["b1", "b4", "b5"])
+        self.assertEqual([p["url"] for p in pick_hr_profiles(cards, "Aselsan", limit=10)], ["b6"])
+
     def test_city_word_does_not_match_every_card(self):
         self.assertEqual(pick_hr_profiles(self.CARDS, "Ankara Otomotiv", limit=5), [])
 
