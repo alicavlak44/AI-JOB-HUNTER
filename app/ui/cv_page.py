@@ -1,7 +1,7 @@
 """CV Stüdyosu — adım adım:
-01 Yükle → 02 Format (7 şablon) → 03 Koç: CV'yi okur, eksikleri SORAR, cevaplarla günceller → 04 Kontrol → 05 İndir.
+1 Yükle → 2 Format (7 şablon) → 3 Koç: CV'yi okur, eksikleri SORAR, cevaplarla günceller → 4 Kontrol → 5 İndir.
 
-Görünüm: kâğıt + mürekkep (dergi sayfası). Tema renkleri .streamlit/config.toml'da; sayfaya özel stil aşağıdaki CSS'te.
+Görünüm: beyaz, modern kartlar. Tema renkleri .streamlit/config.toml'da; sayfaya özel stil aşağıdaki CSS'te.
 Çok kişili: her kişinin verisi profiles/<ad>/ altında ayrı tutulur.
 """
 import html as _html
@@ -17,54 +17,68 @@ from app import context
 from app.ui.common import CSS as COMMON_CSS, show_flash, set_flash
 
 STEPS = ["Yükle", "Format", "Koç", "Kontrol", "İndir"]
-INK, MUTED, RULE, ACCENT = "#1F1B16", "#6B6257", "#E2D9CA", "#B4532A"
-LEVEL = {"kritik": ("kritik", "#B4532A"), "önemli": ("önemli", "#B7791F"), "öneri": ("öneri", "#6B6257")}
+INK, MUTED, RULE, ACCENT = "#0F172A", "#64748B", "#E5E8EF", "#0A66FF"
+LEVEL = {"kritik": ("Kritik", "#DC2626", "#FEF2F2"), "önemli": ("Önemli", "#D97706", "#FFFBEB"),
+         "öneri": ("Öneri", "#0A66FF", "#EFF5FF")}
 
 CSS = f"""<style>
-.cvx-mast {{padding: 6px 0 18px; border-bottom: 1px solid {RULE}; margin-bottom: 6px;}}
-.cvx-over {{font-family: 'IBM Plex Mono', monospace; font-size: .72rem; letter-spacing: .16em; text-transform: uppercase;
-  color: {MUTED};}}
-.cvx-mast h1 {{font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 2.6rem; line-height: 1.08;
-  margin: 8px 0 10px; padding: 0; color: {INK};}}
-.cvx-mast h1 em {{color: {ACCENT}; font-style: italic;}}
-.cvx-lede {{font-size: 1.05rem; max-width: 46rem; color: #3D362E; margin: 0;}}
-.cvx-facts {{margin-top: 14px; display: flex; flex-wrap: wrap; gap: 0;}}
-.cvx-facts span {{font-family: 'IBM Plex Mono', monospace; font-size: .74rem; color: {MUTED}; padding: 0 14px;
-  border-left: 1px solid {RULE};}}
-.cvx-facts span:first-child {{padding-left: 0; border-left: none;}}
-/* adım çubuğu: sekme gibi, altı çizili */
-[class*="st-key-cv_nav"] button {{background: transparent !important; border: none !important; border-radius: 0 !important;
-  border-bottom: 2px solid {RULE} !important; box-shadow: none !important; justify-content: flex-start !important;
-  padding: 6px 2px !important; color: {MUTED} !important;}}
-[class*="st-key-cv_nav"] button p {{font-family: 'IBM Plex Mono', monospace; font-size: .8rem; letter-spacing: .04em;}}
-[class*="st-key-cv_nav"] button[data-testid="stBaseButton-primary"] {{color: {INK} !important;
-  border-bottom-color: {ACCENT} !important;}}
-[class*="st-key-cv_nav"] button[data-testid="stBaseButton-primary"] p {{font-weight: 600;}}
-.cvx-sect {{display: flex; gap: 16px; align-items: baseline; margin: 18px 0 4px;}}
-.cvx-sect .n {{font-family: 'Fraunces', Georgia, serif; font-size: 2.2rem; color: {ACCENT}; line-height: 1;}}
-.cvx-sect h3 {{font-family: 'Fraunces', Georgia, serif; margin: 0; padding: 0; font-size: 1.5rem;}}
-.cvx-sect p {{margin: 2px 0 0; color: {MUTED}; font-size: .92rem; max-width: 52rem;}}
-.cvx-q {{display: grid; grid-template-columns: 44px 1fr; gap: 6px; padding-top: 14px; border-top: 1px solid {RULE};}}
-.cvx-q .num {{font-family: 'IBM Plex Mono', monospace; color: {ACCENT}; font-size: .85rem; padding-top: 3px;}}
-.cvx-q .q {{font-family: 'Fraunces', Georgia, serif; font-size: 1.13rem; line-height: 1.35; color: {INK};}}
-.cvx-q .why {{font-size: .84rem; color: {MUTED}; font-style: italic; margin-top: 3px;}}
-.cvx-q .src {{font-family: 'IBM Plex Mono', monospace; font-size: .66rem; letter-spacing: .1em; text-transform: uppercase;
-  color: {MUTED}; margin-left: 8px; font-style: normal;}}
-.cvx-note {{font-family: 'Fraunces', Georgia, serif; font-style: italic; font-size: 1.08rem; color: #3D362E;
-  border-left: 2px solid {ACCENT}; padding: 2px 0 2px 14px; margin: 8px 0 14px;}}
-.cvx-diff {{padding: 6px 0 10px; border-bottom: 1px dashed {RULE};}}
-.cvx-diff .tag {{font-family: 'IBM Plex Mono', monospace; font-size: .68rem; letter-spacing: .1em; text-transform: uppercase;
-  color: {MUTED};}}
-.cvx-diff .old {{color: {MUTED}; text-decoration: line-through; text-decoration-color: {ACCENT}; margin: 3px 0;}}
-.cvx-diff .new {{color: {INK}; border-left: 3px solid {ACCENT}; padding-left: 10px; margin-top: 3px;}}
-.cvx-card-title {{font-family: 'Fraunces', Georgia, serif; font-size: 1.12rem; color: {INK};}}
-.cvx-picked {{font-family: 'IBM Plex Mono', monospace; font-size: .68rem; color: {ACCENT}; letter-spacing: .12em; margin-left: 6px;}}
-.cvx-meta {{font-size: .8rem; color: {MUTED};}}
-.cvx-chk {{display: grid; grid-template-columns: 74px 1fr; gap: 8px; padding: 5px 0; border-bottom: 1px solid {RULE};
-  font-size: .9rem;}}
-.cvx-chk .lv {{font-family: 'IBM Plex Mono', monospace; font-size: .7rem; letter-spacing: .06em; text-transform: uppercase;
-  padding-top: 2px;}}
-.cvx-chk .tip {{display: block; color: {MUTED}; font-size: .8rem;}}
+.cvx-mast {{padding: 4px 0 20px;}}
+.cvx-over {{font-size: .8rem; font-weight: 700; color: {ACCENT};}}
+.cvx-mast h1 {{font-weight: 800; font-size: 2.7rem; line-height: 1.08; letter-spacing: -.035em; margin: 6px 0 10px;
+  padding: 0; color: {INK};}}
+.cvx-mast h1 span {{color: {ACCENT};}}
+.cvx-lede {{font-size: 1.06rem; max-width: 44rem; color: #475569; margin: 0;}}
+.cvx-facts {{margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px 22px;}}
+.cvx-facts span {{font-size: .86rem; font-weight: 600; color: #334155;}}
+.cvx-facts span::before {{content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: {ACCENT}; margin-right: 8px; vertical-align: middle;}}
+.cvx-sect {{margin: 22px 0 8px;}}
+.cvx-sect .n {{display: inline-block; font-size: .74rem; font-weight: 700; color: {ACCENT}; background: #EFF5FF;
+  border-radius: 999px; padding: 3px 10px; margin-bottom: 6px;}}
+.cvx-sect h3 {{font-weight: 800; margin: 0; padding: 0; font-size: 1.6rem; letter-spacing: -.02em;}}
+.cvx-sect p {{margin: 4px 0 0; color: {MUTED}; font-size: .95rem; max-width: 52rem;}}
+.cvx-q {{display: grid; grid-template-columns: 34px 1fr; gap: 12px; padding: 16px 0 6px; border-top: 1px solid {RULE};}}
+.cvx-q:first-child {{border-top: none;}}
+.cvx-q .num {{width: 30px; height: 30px; border-radius: 50%; background: {ACCENT}; color: #fff; font-weight: 700;
+  font-size: .8rem; display: flex; align-items: center; justify-content: center;}}
+.cvx-q .q {{font-size: 1.06rem; font-weight: 700; line-height: 1.4; color: {INK};}}
+.cvx-q .why {{font-size: .86rem; color: {MUTED}; margin-top: 3px;}}
+.cvx-q .src {{font-size: .7rem; font-weight: 600; color: {MUTED}; background: #F1F5F9; border-radius: 999px;
+  padding: 2px 8px; margin-left: 8px;}}
+.cvx-note {{background: #EFF5FF; border: 1px solid #D6E4FF; border-radius: 14px; padding: 14px 18px; margin: 10px 0 16px;
+  color: #1E3A8A; font-size: .98rem;}}
+.cvx-diff {{border: 1px solid {RULE}; border-radius: 12px; overflow: hidden; margin: 4px 0 10px; background: #fff;}}
+.cvx-diff .tag {{display: block; font-size: .74rem; font-weight: 700; color: {MUTED}; padding: 8px 14px;
+  border-bottom: 1px solid {RULE}; background: #F8FAFC;}}
+.cvx-diff .old {{background: #FEF2F2; color: #991B1B; padding: 8px 14px; text-decoration: line-through;
+  text-decoration-color: rgba(153,27,27,.45);}}
+.cvx-diff .old::before {{content: "− "; text-decoration: none; font-weight: 700;}}
+.cvx-diff .new {{background: #ECFDF5; color: #065F46; padding: 8px 14px; font-weight: 500;}}
+.cvx-diff .new::before {{content: "+ "; font-weight: 700;}}
+.cvx-qn {{font-size: .74rem; font-weight: 700; color: {ACCENT}; margin-bottom: 2px;}}
+.cvx-qq {{font-size: 1.04rem; font-weight: 700; line-height: 1.42; color: {INK};}}
+.cvx-why {{font-size: .86rem; color: {MUTED}; margin-top: 4px;}}
+.cvx-why .src {{font-size: .7rem; font-weight: 600; color: {MUTED}; background: #F1F5F9; border-radius: 999px;
+  padding: 2px 8px; margin-left: 8px;}}
+div[data-testid="stChatMessage"] {{background: #fff; border: 1px solid {RULE}; border-radius: 16px; padding: 12px 16px 16px;
+  margin-bottom: 10px; box-shadow: 0 1px 2px rgba(15,23,42,.03);}}
+div[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]),
+div[data-testid="stChatMessage"]:has([aria-label="Chat message from user"]) {{background: #EFF5FF; border-color: #D6E4FF;
+  max-width: 85%; margin-left: auto;}}
+.cvx-live {{font-size: .8rem; font-weight: 700; color: {ACCENT}; margin-bottom: 6px;}}
+.cvx-live span {{display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #22C55E; margin-right: 6px;
+  box-shadow: 0 0 0 3px rgba(34,197,94,.18);}}
+.cvx-score {{display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px;}}
+.cvx-score b {{font-size: 2rem; font-weight: 800; letter-spacing: -.03em; color: {INK};}}
+.cvx-score span {{font-size: .88rem; font-weight: 600; color: {MUTED};}}
+.cvx-card-title {{font-size: 1.05rem; font-weight: 800; color: {INK}; letter-spacing: -.01em;}}
+.cvx-picked {{font-size: .7rem; font-weight: 700; color: #fff; background: {ACCENT}; border-radius: 999px;
+  padding: 2px 9px; margin-left: 8px; vertical-align: middle;}}
+.cvx-meta {{font-size: .82rem; color: {MUTED}; line-height: 1.5;}}
+.cvx-chk {{display: grid; grid-template-columns: 76px 1fr; gap: 10px; padding: 7px 0; border-bottom: 1px solid #F1F5F9;
+  font-size: .92rem; align-items: start;}}
+.cvx-chk .lv {{font-size: .72rem; font-weight: 700; border-radius: 999px; padding: 2px 8px; text-align: center;}}
+.cvx-chk .tip {{display: block; color: {MUTED}; font-size: .82rem; margin-top: 2px;}}
 .cvx-chk.ok {{color: {MUTED};}}
 </style>"""
 
@@ -75,17 +89,17 @@ def _md(html_str):
 
 def _masthead(n_templates):
     _md(CSS)
-    _md(f"""<div class="cvx-mast"><div class="cvx-over">Kariyer Otonomu · CV Stüdyosu</div>
-<h1>CV'nizi birlikte <em>yeniden</em> yazalım.</h1>
-<p class="cvx-lede">Siz anlatın, biz düzenleyelim. Koç CV'nizde eksik kalan yerleri size sorar; CV'ye yalnızca sizin
+    _md(f"""<div class="cvx-mast"><div class="cvx-over">CV Stüdyosu</div>
+<h1>Daha güçlü bir CV, <span>birlikte.</span></h1>
+<p class="cvx-lede">CV'nizi yükleyin, formatını seçin. Koç eksik kalan yerleri size sorar; CV'ye yalnızca sizin
 söyledikleriniz girer.</p>
-<div class="cvx-facts"><span>{n_templates} format</span><span>sizi dinleyen koç</span><span>uydurma yok</span>
-<span>veriler bu bilgisayarda</span></div></div>""")
+<div class="cvx-facts"><span>{n_templates} format</span><span>Size soru soran koç</span><span>Uydurma bilgi yok</span>
+<span>Veriler bilgisayarınızda</span></div></div>""")
 
 
 def _section(n, title, note=""):
-    _md(f"""<div class="cvx-sect"><span class="n">{n:02d}</span><div><h3>{_html.escape(title)}</h3>
-{f'<p>{note}</p>' if note else ''}</div></div>""")
+    _md(f"""<div class="cvx-sect"><span class="n">Adım {n} / {len(STEPS)}</span><h3>{_html.escape(title)}</h3>
+{f'<p>{note}</p>' if note else ''}</div>""")
 
 
 def _diff(old, new, label):
@@ -100,7 +114,7 @@ def _k(slug, name):
 
 def _reset_pending(slug):
     """CV değişti (yeni CV, elle kayıt): eski indekslere dayanan bekleyen öneriler geçersiz."""
-    for name in ("questions", "props", "sugg", "out", "last_round"):
+    for name in ("questions", "props", "answers", "sugg", "out", "last_round"):
         st.session_state.pop(_k(slug, name), None)
 
 
@@ -117,12 +131,12 @@ def _go(slug, n):
 
 # ---------------------------------------------------------------- adım çubuğu
 def _stepper(slug, current, enabled):
-    cols = st.columns(len(STEPS))
-    for i, (c, label) in enumerate(zip(cols, STEPS), 1):
-        done = "  ✓" if i < current else ""
-        if c.button(f"{i:02d}  {label}{done}", key=_k(slug, f"nav{i}"), width="stretch",
-                    type="primary" if i == current else "secondary", disabled=not enabled and i > 1):
-            _go(slug, i)
+    labels = {i: f"{i}. {name}" + ("  ✓" if i < current else "") for i, name in enumerate(STEPS, 1)}
+    picked = st.segmented_control("Adımlar", list(labels), default=current, format_func=labels.get,
+                                  key=_k(slug, f"seg{current}"), label_visibility="collapsed", disabled=not enabled,
+                                  width="stretch")
+    if picked and picked != current:
+        _go(slug, picked)
 
 
 def _checks(slug, p, job=""):
@@ -131,20 +145,25 @@ def _checks(slug, p, job=""):
 
 
 def _level(c):
-    name, color = LEVEL[c["level"]]
-    return f"<span class='lv' style='color:{color}'>{name}</span>"
+    name, color, bg = LEVEL[c["level"]]
+    return f"<span class='lv' style='color:{color};background:{bg}'>{name}</span>"
 
 
-def _score_box(slug, p, job=""):
+def _score_box(slug, p, job="", compact=False):
     checks = _checks(slug, p, job)
     score, bad = ca.score(checks), ca.failing(checks)
+    if compact:  # dar sütun (koç ekranı): tek satır puan + ilk eksikler
+        _md(f"<div class='cvx-score'><b>{score}</b><span>/100 CV kalite puanı</span></div>")
+        st.progress(score / 100)
+        _md("".join(f"<div class='cvx-chk'>{_level(c)}<div>{_html.escape(c['msg'])}</div></div>" for c in bad[:3]))
+        return score
     c1, c2 = st.columns([1, 3])
     c1.metric("CV kalite puanı", f"{score}/100", help=f"{len(checks)} maddelik kontrol listesine göre")
     with c2:
         st.progress(score / 100)
         rows = "".join(f"<div class='cvx-chk'>{_level(c)}<div>{_html.escape(c['area'])} — {_html.escape(c['msg'])}</div></div>"
                        for c in bad[:3])
-        more = f"<div class='cvx-meta' style='margin-top:6px'>ve {len(bad) - 3} madde daha · 04 Kontrol → Kontrol listesi</div>" \
+        more = f"<div class='cvx-meta' style='margin-top:6px'>ve {len(bad) - 3} madde daha · 4. Kontrol → Kontrol listesi</div>" \
             if len(bad) > 3 else ""
         _md(rows + more)
     return score
@@ -162,7 +181,7 @@ def _checklist(slug, p):
             rows = []
             for c in items:
                 if c["ok"]:
-                    rows.append(f"<div class='cvx-chk ok'><span class='lv'>tamam</span><div>{_html.escape(c['msg'])}</div></div>")
+                    rows.append(f"<div class='cvx-chk ok'><span class='lv' style='color:#059669;background:#ECFDF5'>Tamam</span><div>{_html.escape(c['msg'])}</div></div>")
                 else:
                     tip = f"<span class='tip'>{_html.escape(c['tip'])}</span>" if c.get("tip") else ""
                     rows.append(f"<div class='cvx-chk'>{_level(c)}<div>{_html.escape(c['msg'])}{tip}</div></div>")
@@ -210,7 +229,7 @@ def _thumb(doc, height=330, scale=0.29):
     src = _html.escape(doc, quote=True)
     st.iframe(
         f"""<div style="width:{int(794 * scale)}px;height:{height}px;overflow:hidden;border:1px solid {RULE};
-background:#fff;margin:auto"><iframe srcdoc="{src}" style="width:794px;height:1123px;border:0;transform:scale({scale});
+background:#fff;margin:auto;border-radius:10px;box-shadow:0 4px 18px rgba(15,23,42,.06)"><iframe srcdoc="{src}" style="width:794px;height:1123px;border:0;transform:scale({scale});
 transform-origin:0 0;pointer-events:none"></iframe></div>""", height=height + 6)
 
 
@@ -233,7 +252,7 @@ def _step_format(slug, p):
             with c:
                 with st.container(border=True):
                     _md(f"<div class='cvx-card-title'>{info['label']}"
-                        f"{'<span class=cvx-picked>SEÇİLİ</span>' if chosen else ''}</div>")
+                        f"{'<span class=cvx-picked>Seçili</span>' if chosen else ''}</div>")
                     _thumb(cs.render_html(p, t, cs.template_photo(slug, t), accent))
                     tags = " · ".join(x for x in ("ATS dostu" if info["ats"] else "", "fotoğraflı" if info["photo"] else "") if x)
                     _md(f"<div class='cvx-meta'>{info['desc']}<br><b>Kime:</b> {info['best']}"
@@ -250,118 +269,187 @@ def _step_format(slug, p):
         _go(slug, 3)
 
 
-# ---------------------------------------------------------------- 03 koç
+# ---------------------------------------------------------------- 3) koç: sohbet
+COACH, USER = ":material/auto_awesome:", ":material/person:"
+
+
+def _say(text, html=False):
+    with st.chat_message("assistant", avatar=COACH):
+        st.markdown(text, unsafe_allow_html=html)
+
+
+def _ask_bubble(q, i, n):
+    src = "Kontrol listesi" if q["source"] == "kural" else "Koç"
+    why = f"<div class='cvx-why'>{_html.escape(q['why'])}<span class='src'>{src}</span></div>" if q.get("why") else ""
+    _say(f"<div class='cvx-qn'>Soru {i} / {n}</div><div class='cvx-qq'>{_html.escape(q['question'])}</div>{why}", html=True)
+
+
+def _clear_round(slug):
+    for name in ("questions", "props", "answers"):
+        st.session_state.pop(_k(slug, name), None)
+
+
+def _live_preview(slug, p, original):
+    """Sağdaki canlı CV: cevaplar geldikçe taslak düzenlemeler (model çağırmadan) uygulanmış hali."""
+    import copy
+    view = copy.deepcopy(p)
+    props = st.session_state.get(_k(slug, "props"))
+    qs = st.session_state.get(_k(slug, "questions")) or []
+    answers = st.session_state.get(_k(slug, "answers")) or {}
+    if props is not None:
+        picked = [e for k, e in enumerate(props["accepted"])
+                  if st.session_state.get(_k(slug, f"pk{st.session_state.get(_k(slug, 'round'), 1)}_{k}"), True)]
+        ci.apply_edits(view, picked)
+        note = "Onaylarsanız CV'niz böyle olacak"
+    elif answers:
+        qa = [{**q, "answer": answers[q["key"]]} for q in qs if q["key"] in answers]
+        ci.apply_edits(view, ci.propose_edits(view, original, qa, use_ai=False)["accepted"])
+        note = f"Taslak — {len(answers)} cevabınız işlendi"
+    else:
+        note = "Cevap verdikçe burada güncellenir"
+    _md(f"<div class='cvx-live'><span></span>Canlı önizleme · {note}</div>")
+    t = view.get("template") or "modern"
+    st.iframe(cs.render_html(view, t, cs.template_photo(slug, t), view.get("accent") or "#1f4e79"), height=860)
+
+
 def _step_coach(slug, p, original):
-    _section(3, "Koçla konuşun", "Koç CV'nizi bir İK uzmanı gözüyle okur ve eksik kalan yerleri size sorar. Kendisi "
-                                 "bilgi eklemez: CV'de ya da cevaplarınızda olmayan sayı, beceri ve iddialar otomatik "
-                                 "reddedilir. Her değişikliği siz onaylarsınız.")
+    chat, preview = st.columns([11, 9], gap="large")
+    with preview:
+        _live_preview(slug, p, original)
+    with chat:
+        if not _round_result(slug):
+            _coach_chat(slug, p, original)
+
+
+def _coach_chat(slug, p, original):
+    _section(3, "Koçla konuşun", "Koç CV'nizi bir İK uzmanı gözüyle okur ve eksik kalan yerleri tek tek sorar. "
+                                 "Kendisi bilgi eklemez: CV'de ya da cevaplarınızda olmayan sayı, beceri ve iddialar "
+                                 "otomatik reddedilir. Her değişikliği siz onaylarsınız.")
     rnd = st.session_state.get(_k(slug, "round"), 1)
     qs = st.session_state.get(_k(slug, "questions"))
-    props = st.session_state.get(_k(slug, "props"))
+    first = (p.get("name") or "").split(" ")[0] or "Merhaba"
 
-    if props is not None:
-        return _coach_review(slug, p, props, rnd)
-    if qs is None:
-        before = _score_box(slug, p)
+    if qs is None:  # sohbet başlamadı
+        before = _score_box(slug, p, compact=True)
         st.session_state[_k(slug, "score_before")] = before
-        c1, c2 = st.columns(2)
-        target = c1.text_input("Hedef unvan (isteğe bağlı)", p.get("headline", ""), key=_k(slug, "target"))
-        job = c2.text_area("Hedef ilan metni (isteğe bağlı) — yapıştırırsanız sorular bu ilana göre olur",
-                           key=_k(slug, "job"), height=100)
         done = len(p.get("qa_log", []))
-        if done:
-            st.caption(f"Daha önce {done} soru cevaplandı; onlar tekrar sorulmaz.")
-        if st.button(f"{rnd}. tur: CV'mi oku ve bana sor (1-2 dk)", type="primary"):
-            with st.status("Koç CV'nizi okuyor...", expanded=True) as status:
-                st.write("Kontrol listesinden geçiriliyor...")
-                st.write("Bir İK uzmanı gözüyle okunuyor; işverenin soracakları çıkarılıyor...")
-                qs, err = ci.build_questions(p, original, target, job)
-                status.update(label=f"{len(qs)} soru hazır", state="complete")
+        _say(f"Merhaba {first}! CV'nizi okuyup işverenin soracağı ama CV'de bulamayacağı şeyleri size sorabilirim. "
+             + (f"Daha önce {done} soruyu cevapladınız, onları tekrar sormayacağım. " if done else "")
+             + "Belirli bir ilana göre hazırlanmak isterseniz aşağıya ekleyin; yoksa doğrudan başlayalım.")
+        with st.expander("Hedef unvan ve ilan (isteğe bağlı)"):
+            target = st.text_input("Hedef unvan", p.get("headline", ""), key=_k(slug, "target"))
+            job = st.text_area("Hedef ilan metni — yapıştırırsanız sorular bu ilana göre olur", key=_k(slug, "job"), height=100)
+        if st.button(f"{rnd}. tur: CV'mi oku ve sorularını sor", type="primary", icon=":material/play_arrow:"):
+            with st.chat_message("assistant", avatar=COACH):
+                with st.spinner("CV'nizi okuyorum, işverenin soracaklarını çıkarıyorum (genelde 1-2 dk, en fazla 3 dk)..."):
+                    qs, err = ci.build_questions(p, original, target, job)
             st.session_state[_k(slug, "questions")] = qs
+            st.session_state[_k(slug, "answers")] = {}
             if err:
-                set_flash("cv", "warning", "Yerel modele ulaşılamadı (LM Studio açık mı?). Şimdilik kontrol listesinden "
-                                           f"çıkan sorular gösteriliyor. Ayrıntı: {err[:150]}")
+                set_flash("cv", "warning", "Koçun yapay zekâ kısmı bu sefer cevap vermedi; şimdilik kontrol listesinden "
+                                           f"çıkan sorular soruluyor. Ayrıntı: {err[:160]}")
             st.rerun()
         return
+
     if not qs:
-        st.success("Sorulacak yeni bir şey kalmadı; CV'niz güçlü görünüyor.")
+        _say("Sorulacak yeni bir şey kalmadı; CV'niz güçlü görünüyor. Kontrol adımına geçebilirsiniz.")
         if st.button("Devam: kontrol →", type="primary"):
-            st.session_state.pop(_k(slug, "questions"), None)
+            _clear_round(slug)
             _go(slug, 4)
         return
 
-    first = (p.get("name") or "").split(" ")[0]
-    _md(f"<div class='cvx-note'>{_html.escape(first)}, CV'nizi okudum. {len(qs)} sorum var. Bilmediğiniz ya da "
-        "CV'de görünmesini istemediğiniz soruyu boş bırakın; cevaplarınızı CV diline ben çeviririm, son söz sizin.</div>")
-    with st.form(_k(slug, f"form{rnd}")):
-        answers = {}
-        for i, q in enumerate(qs):
-            src = "kontrol listesi" if q["source"] == "kural" else "koç"
-            why = f"<div class='why'>{_html.escape(q['why'])}<span class='src'>{src}</span></div>" if q.get("why") else ""
-            _md(f"<div class='cvx-q'><div class='num'>{i + 1:02d}</div><div><div class='q'>{_html.escape(q['question'])}</div>"
-                f"{why}</div></div>")
-            if q["kind"] == "yesno":
-                answers[q["key"]] = st.radio("Cevap", ["Evet", "Hayır"], index=None, horizontal=True,
-                                             key=_k(slug, f"a{rnd}_{i}"), label_visibility="collapsed") or ""
-            else:
-                answers[q["key"]] = st.text_area("Cevap", key=_k(slug, f"a{rnd}_{i}"), height=68,
-                                                 placeholder=("Örn: " + q["example"]) if q.get("example") else "Cevabınız",
-                                                 label_visibility="collapsed")
-        c1, c2 = st.columns(2)
-        go = c1.form_submit_button("Cevaplarımı CV'ye işle", type="primary", width="stretch")
-        skip = c2.form_submit_button("Bu turu atla", width="stretch")
-    if skip:
-        st.session_state.pop(_k(slug, "questions"), None)
-        _go(slug, 4)
-    if go:
-        qa = [{**q, "answer": answers.get(q["key"], "")} for q in qs]
-        with st.status("Cevaplarınız CV'ye işleniyor...", expanded=True) as status:
-            st.write("Cevaplar CV diline çevriliyor...")
+    answers = st.session_state.setdefault(_k(slug, "answers"), {})
+    n = len(qs)
+    _say(f"{first}, CV'nizi okudum ve {n} sorum var. Bilmediğiniz ya da CV'de görünmesini istemediğiniz soruyu "
+         "**Geç** ile atlayabilirsiniz. Cevaplarınızı CV diline ben çeviririm, son söz sizin.")
+    for i, q in enumerate(qs[:len(answers)], 1):  # geçmiş
+        _ask_bubble(q, i, n)
+        with st.chat_message("user", avatar=USER):
+            a = answers.get(q["key"], "")
+            st.markdown(_html.escape(a) if a else "_Geçildi_")
+
+    props = st.session_state.get(_k(slug, "props"))
+    if props is not None:
+        return _coach_review(slug, p, props, rnd)
+
+    idx = len(answers)
+    if idx < n:  # sıradaki soru
+        q = qs[idx]
+        _ask_bubble(q, idx + 1, n)
+        st.progress(idx / n, text=f"{idx} / {n} cevaplandı")
+
+        def answer(value):
+            answers[q["key"]] = value
+            st.rerun()
+
+        if q["kind"] == "yesno":
+            c1, c2, c3, _ = st.columns([1, 1, 1, 5])
+            if c1.button("Evet", type="primary", key=_k(slug, f"y{rnd}_{idx}"), width="stretch"):
+                answer("Evet")
+            if c2.button("Hayır", key=_k(slug, f"n{rnd}_{idx}"), width="stretch"):
+                answer("Hayır")
+            if c3.button("Geç", key=_k(slug, f"s{rnd}_{idx}"), width="stretch"):
+                answer("")
+        else:
+            c1, c2, _ = st.columns([1, 1, 5])
+            if c1.button("Geç", key=_k(slug, f"s{rnd}_{idx}"), width="stretch", icon=":material/skip_next:"):
+                answer("")
+            if c2.button("Turu bitir", key=_k(slug, f"end{rnd}_{idx}"), width="stretch",
+                         help="Kalan soruları atla, şimdiye kadarki cevapları CV'ye işle"):
+                for rest in qs[idx:]:
+                    answers.setdefault(rest["key"], "")
+                st.rerun()
+            hint = ("Örn: " + q["example"]) if q.get("example") else "Cevabınızı yazın"
+            msg = st.chat_input(hint, key=_k(slug, f"chat{rnd}"))
+            if msg is not None:
+                answer(msg.strip())
+        return
+
+    # bütün sorular cevaplandı → cevapları CV'ye işle
+    qa = [{**q, "answer": answers.get(q["key"], "")} for q in qs]
+    with st.chat_message("assistant", avatar=COACH):
+        with st.spinner("Cevaplarınızı CV diline çeviriyor ve her birini denetliyorum..."):
             props = ci.propose_edits(p, original, qa)
-            st.write(f"Denetim: {len(props['accepted'])} öneri geçti, {len(props['rejected'])} reddedildi.")
-            status.update(label="Öneriler hazır", state="complete")
-        st.session_state[_k(slug, "props")] = {**props, "qa": qa}
-        st.rerun()
+    st.session_state[_k(slug, "props")] = {**props, "qa": qa}
+    st.rerun()
 
 
 def _coach_review(slug, p, props, rnd):
-    if props.get("ai_error"):
-        st.warning("Yerel model cevapları düzenleyemedi; cevaplarınız olduğu gibi eklenmek üzere hazırlandı. "
-                   "İsterseniz 04 Kontrol adımında elle düzeltebilirsiniz.")
-    _md(f"<div class='cvx-note'>Cevaplarınızdan {len(props['accepted'])} değişiklik çıkardım ve her birini CV'nize ve "
-        "cevaplarınıza karşı denetledim. Uygulamak istemediklerinizin işaretini kaldırın.</div>")
-    picks = []
-    for k, e in enumerate(props["accepted"]):
-        c1, c2 = st.columns([1, 14])
-        ok = c1.checkbox("Uygula", value=True, key=_k(slug, f"pk{rnd}_{k}"), label_visibility="collapsed")
-        c2.markdown(_diff(e.get("old") or "", e["new"], e["label"]), unsafe_allow_html=True)
-        if ok:
-            picks.append(e)
-    if not props["accepted"]:
-        st.info("Cevaplarınızdan CV'ye eklenecek bir değişiklik çıkmadı.")
-    if props["rejected"]:
-        with st.expander(f"Denetimden geçemeyen {len(props['rejected'])} öneri (uydurma ya da bilgi kaybı)"):
-            for r in props["rejected"]:
-                st.markdown(f"- _{r['new'][:250]}_ → {'; '.join(r['why'])}")
-    c1, c2 = st.columns(2)
-    if c1.button(f"Onayla ve CV'yi güncelle ({len(picks)} değişiklik)", type="primary", width="stretch"):
-        skipped = ci.apply_edits(p, picks, props["qa"])
-        cs.save_profile(slug, p)
-        _reset_edit_widgets(slug)
-        if skipped:
-            set_flash("cv", "warning", f"{len(skipped)} değişiklik uygulanmadı: öneriden sonra CV'nin o kısmı "
-                                       "değişmişti (yanlış yere yazılmasın diye atlandı).")
-        after = ca.score(_checks(slug, p))
-        before = st.session_state.get(_k(slug, "score_before"), after)
-        for name in ("questions", "props"):
-            st.session_state.pop(_k(slug, name), None)
-        st.session_state[_k(slug, "round")] = rnd + 1
-        st.session_state[_k(slug, "last_round")] = {"n": len(picks), "before": before, "after": after}
-        st.rerun()
-    if c2.button("Vazgeç (hiçbir şey değişmesin)", width="stretch"):
-        for name in ("questions", "props"):
-            st.session_state.pop(_k(slug, name), None)
-        st.rerun()
+    with st.chat_message("assistant", avatar=COACH):
+        if props.get("ai_error"):
+            st.warning("Yerel model cevapları düzenleyemedi; cevaplarınız olduğu gibi eklenmek üzere hazırlandı.")
+        n_ok = len(props["accepted"])
+        st.markdown(f"Cevaplarınızdan **{n_ok} değişiklik** çıkardım ve her birini CV'nize ve cevaplarınıza karşı "
+                    "denetledim. Uygulamak istemediklerinizin işaretini kaldırın." if n_ok else
+                    "Cevaplarınızdan CV'ye eklenecek bir değişiklik çıkmadı.")
+        picks = []
+        for k, e in enumerate(props["accepted"]):
+            c1, c2 = st.columns([1, 16])
+            ok = c1.checkbox("Uygula", value=True, key=_k(slug, f"pk{rnd}_{k}"), label_visibility="collapsed")
+            c2.markdown(_diff(e.get("old") or "", e["new"], e["label"]), unsafe_allow_html=True)
+            if ok:
+                picks.append(e)
+        if props["rejected"]:
+            with st.expander(f"Denetimden geçemeyen {len(props['rejected'])} öneri (uydurma ya da bilgi kaybı)"):
+                for r in props["rejected"]:
+                    st.markdown(f"- _{r['new'][:250]}_ → {'; '.join(r['why'])}")
+        c1, c2 = st.columns(2)
+        if c1.button(f"Onayla ve CV'yi güncelle ({len(picks)} değişiklik)", type="primary", width="stretch"):
+            skipped = ci.apply_edits(p, picks, props["qa"])
+            cs.save_profile(slug, p)
+            _reset_edit_widgets(slug)
+            if skipped:
+                set_flash("cv", "warning", f"{len(skipped)} değişiklik uygulanmadı: öneriden sonra CV'nin o kısmı "
+                                           "değişmişti (yanlış yere yazılmasın diye atlandı).")
+            after = ca.score(_checks(slug, p))
+            before = st.session_state.get(_k(slug, "score_before"), after)
+            _clear_round(slug)
+            st.session_state[_k(slug, "round")] = rnd + 1
+            st.session_state[_k(slug, "last_round")] = {"n": len(picks), "before": before, "after": after}
+            st.rerun()
+        if c2.button("Vazgeç (hiçbir şey değişmesin)", width="stretch"):
+            _clear_round(slug)
+            st.rerun()
 
 
 def _round_result(slug):
@@ -369,8 +457,9 @@ def _round_result(slug):
     if not last:
         return
     diff = last["after"] - last["before"]
-    st.success(f"{last['n']} değişiklik uygulandı. CV kalite puanı: {last['before']} → {last['after']}"
-               + (f" (+{diff})" if diff > 0 else ""))
+    _say(f"Tamamdır: **{last['n']} değişiklik** CV'nize işlendi. CV kalite puanınız **{last['before']} → {last['after']}**"
+         + (f" (+{diff})." if diff > 0 else ".") + " İsterseniz yeni sorularla bir tur daha yapalım ya da CV'yi "
+         "birlikte kontrol edelim.")
     c1, c2 = st.columns(2)
     if c1.button("Bir tur daha: yeni sorular", width="stretch"):
         st.session_state.pop(_k(slug, "last_round"), None)
@@ -402,7 +491,7 @@ def _step_review(slug, p, original):
                 st.markdown(f"- **{q['question']}**  \n  {q['answer'] or '_(boş bırakıldı)_'}")
     with preview:
         t = p.get("template") or "modern"
-        st.caption(f"Önizleme · {cs.TEMPLATE_INFO.get(t, {}).get('label', t)} (formatı 02'den değiştirebilirsiniz)")
+        st.caption(f"Önizleme · {cs.TEMPLATE_INFO.get(t, {}).get('label', t)} (formatı 2. adımdan değiştirebilirsiniz)")
         st.iframe(cs.render_html(p, t, cs.template_photo(slug, t), p.get("accent") or "#1f4e79"), height=1000)
     if st.button("Devam: indir →", type="primary"):
         _go(slug, 5)
@@ -434,7 +523,7 @@ def _edit(slug, p):
     st.caption("CV'de olmayan yeni bir madde eklerseniz 'sizin beyanınız' olarak işaretlenir ve denetimde kaynak sayılır.")
     if st.button("Kaydet", type="primary", key=_k(slug, "e_save")):
         cs.save_profile(slug, p)
-        for name in ("questions", "props", "sugg"):  # eski maddelere dayanan bekleyen öneriler geçersiz
+        for name in ("questions", "props", "answers", "sugg"):  # eski maddelere dayanan bekleyen öneriler geçersiz
             st.session_state.pop(_k(slug, name), None)
         st.toast("Kaydedildi")
 
@@ -514,8 +603,7 @@ def page_cv():
     if current == 2:
         _step_format(slug, p)
     elif current == 3:
-        if not _round_result(slug):
-            _step_coach(slug, p, original)
+        _step_coach(slug, p, original)
     elif current == 4:
         _step_review(slug, p, original)
     else:

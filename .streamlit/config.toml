@@ -1,17 +1,20 @@
-# Kariyer Otonomu teması: kâğıt + mürekkep (dergi sayfası hissi), tek vurgu rengi
+# Kariyer Otonomu teması: beyaz, ferah, modern çizgiler; tek canlı vurgu rengi
 [theme]
 base = "light"
-primaryColor = "#B4532A"            # kiremit — editörün kalemi
-backgroundColor = "#FAF7F1"         # krem kâğıt
-secondaryBackgroundColor = "#F1EBE0"
-textColor = "#1F1B16"               # mürekkep
-linkColor = "#8A3A1C"
-borderColor = "#E2D9CA"
+primaryColor = "#0A66FF"            # canlı mavi
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F4F6FA"
+textColor = "#0F172A"
+linkColor = "#0A66FF"
+borderColor = "#E5E8EF"
 showWidgetBorder = true
-baseRadius = "4px"
-font = "'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif"
-headingFont = "'Fraunces', Georgia, 'Times New Roman', serif"
-headingFontWeights = [600, 600, 600, 600, 600, 600]
+baseRadius = "10px"
+font = "'Plus Jakarta Sans', 'Helvetica Neue', Arial, sans-serif"
+headingFont = "'Plus Jakarta Sans', 'Helvetica Neue', Arial, sans-serif"
+headingFontWeights = [800, 700, 700, 700, 700, 700]
 
 [client]
 toolbarMode = "minimal"   # sağ üstteki "Deploy" düğmesi gizli
+
+[server]
+address = "localhost"     # yalnızca bu bilgisayardan erişilir (CV ve kişisel veriler içerir)

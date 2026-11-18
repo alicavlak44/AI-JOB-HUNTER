@@ -22,6 +22,7 @@ from app.logger import get_logger
 log = get_logger("cv_interview")
 
 MAX_QUESTIONS = 10
+AI_TIMEOUT = 180  # sn: koç ekranında en fazla bu kadar beklenir, sonra kural tabanlı sorulara / cevaplara geçilir
 YES = {"evet", "e", "yes", "y", "olur", "tamam", "düzelt", "duzelt", "✓"}
 # "Bilgi yok" anlamındaki cevaplar: soru atlanmış sayılır, CV'ye bir şey eklenmez
 NON_ANSWERS = {"yok", "hayır", "hayir", "bilmiyorum", "hatırlamıyorum", "hatirlamiyorum", "emin değilim", "yok.",
@@ -168,7 +169,8 @@ KÖTÜ ÖRNEK: "Kesintiyi nasıl tespit ettiniz ve kaç dakikada çözdünüz?" 
 section: hangi bölümü güncelleyeceği — headline, summary, skills, certificates, languages, education, extras
 veya bir deneyim için "exp:N" (N = DENEYİM numarası). why: bu sorunun CV'ye katkısı (tek cümle).
 example: adayın cevabına örnek biçim (kısa)."""
-    data = _chat_json(system, user, "cv_questions", _Q_SCHEMA, temperature=0.4, model=model)
+    data = _chat_json(system, user, "cv_questions", _Q_SCHEMA, temperature=0.4, model=model,
+                      timeout=AI_TIMEOUT, max_tokens=1200)
     out, n_exp = [], len(profile.get("experience", []))  # noqa: E501
     for k, q in enumerate(data.get("questions", [])):
         sec = (q.get("section") or "").strip().lower()
@@ -431,7 +433,8 @@ GÖREV: Her cevabı CV'ye işle. Her düzenleme için:
 - answer: hangi cevaptan geldiği (köşeli parantezdeki numara).
 Cevap bir maddeyi sayıyla güçlendiriyorsa o maddeyi (exp:N:M) yeniden yaz; yeni bir görevse exp:N:+ kullan.
 Boş, "yok", "bilmiyorum" gibi cevaplar için düzenleme ÜRETME."""
-    data = _chat_json(system, user, "cv_answer_edits", _EDIT_SCHEMA, temperature=0.2, model=model)
+    data = _chat_json(system, user, "cv_answer_edits", _EDIT_SCHEMA, temperature=0.2, model=model,
+                      timeout=AI_TIMEOUT, max_tokens=1500)
     return [dict(e) for e in data.get("edits", [])]
 
 

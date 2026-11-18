@@ -3,20 +3,18 @@ import streamlit as st
 
 CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap');
-/* Kâğıt + mürekkep: ince çizgiler, keskin köşeler, gölgesiz kartlar */
-div[data-testid="stMetric"] {background: transparent; border: 1px solid var(--border-color, #E2D9CA);
-  border-radius: 4px; padding: 12px 16px;}
-div[data-testid="stMetricLabel"] p {font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; opacity: .7;}
-div[data-testid="stMetricValue"] {font-family: 'Fraunces', Georgia, serif;}
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+/* Modern ve ferah: beyaz zemin, ince çizgili yuvarlak kartlar, hafif gölge */
+div[data-testid="stMetric"] {background: #fff; border: 1px solid #E5E8EF; border-radius: 14px; padding: 14px 18px;
+  box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 4px 16px rgba(15,23,42,.04);}
+div[data-testid="stMetricLabel"] p {font-size: .8rem; font-weight: 600; color: #64748B;}
+div[data-testid="stMetricValue"] {font-weight: 800; letter-spacing: -.02em;}
 .block-container {padding-top: 4.2rem; max-width: 1200px;}
-.ko-sub {opacity: 0.75; margin-top: -0.6rem; margin-bottom: 1rem;}
+.ko-sub {color: #475569; max-width: 48rem; margin-top: -0.6rem; margin-bottom: 1rem;}
 .ko-step {font-weight: 600; margin: 0.6rem 0 0.2rem;}
-h1, h2, h3, h4 {letter-spacing: -.01em;}
-.ko-over {font-family: 'IBM Plex Mono', monospace; font-size: .72rem; letter-spacing: .16em; text-transform: uppercase;
-  color: #6B6257; margin-bottom: -.4rem;}
-.ko-sub {color: #3D362E; max-width: 48rem;}
-hr {border-color: #E2D9CA !important;}
+h1 {letter-spacing: -.03em !important;} h2, h3, h4 {letter-spacing: -.02em;}
+.ko-over {font-size: .78rem; font-weight: 700; color: #0A66FF; margin-bottom: -.5rem;}
+div[data-testid="stVerticalBlockBorderWrapper"] {border-radius: 14px;}
 </style>
 """
 

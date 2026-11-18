@@ -100,20 +100,26 @@ def _cv_for_prompt():
 
 
 # ---------------------------------------------------------------- LLM çağrısı
-def _chat_json(system, user, schema_name, schema, temperature=0.2, model=None):
-    """Modelden şemaya uygun JSON ister ve dict döner."""
+def _chat_json(system, user, schema_name, schema, temperature=0.2, model=None, timeout=None, max_tokens=None):
+    """Modelden şemaya uygun JSON ister ve dict döner. timeout/max_tokens: etkileşimli ekranlarda bekleme sınırı
+    (bilgisayar yavaşsa kullanıcı dakikalarca beklemesin; çağıran kural tabanlı yedeğe geçer)."""
+    client = _client() if timeout is None else _client().with_options(timeout=timeout, max_retries=0)
     try:
-        res = _client().chat.completions.create(
+        res = client.chat.completions.create(
             model=model or LM_MODEL,
             **({"reasoning_effort": LM_REASONING_EFFORT} if LM_REASONING_EFFORT else {}),
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
             temperature=temperature,
+            **({"max_tokens": max_tokens} if max_tokens else {}),
             response_format={
                 "type": "json_schema",
                 "json_schema": {"name": schema_name, "strict": True, "schema": schema},
             },
         )
-    except (APIConnectionError, APITimeoutError) as e:
+    except APITimeoutError as e:
+        raise AIError("Yerel model zamanında cevap vermedi (bilgisayar yoğun olabilir: açık uygulamaları azaltıp "
+                      "şarja takmayı deneyin).") from e
+    except APIConnectionError as e:
         raise AIError("LM Studio'ya ulaşılamadı. Sunucu açık mı? (LM Studio → Developer → Start server)") from e
 
     raw = res.choices[0].message.content or ""
