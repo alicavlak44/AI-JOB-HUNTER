@@ -65,8 +65,7 @@ def _profile_lock(profile_dir, wait=None):
 def _browser():
     """Kalıcı profil ile görünür Chrome açar; her durumda kapatır. Profil başka süreçte açıksa sırasını bekler."""
     with _profile_lock(ctx.chrome_profile()), sync_playwright() as p:
-        opts = dict(user_data_dir=ctx.chrome_profile(), headless=False, args=BROWSER_ARGS,
-                    ignore_default_args=["--enable-automation"], no_viewport=True)
+        opts = dict(user_data_dir=ctx.chrome_profile(), headless=False, args=BROWSER_ARGS, no_viewport=True)
         try:
             context = p.chromium.launch_persistent_context(channel="chrome", **opts)
         except PlaywrightError as e:
@@ -76,7 +75,6 @@ def _browser():
             context = p.chromium.launch_persistent_context(**opts)  # playwright install chromium
         try:
             page = context.pages[0] if context.pages else context.new_page()
-            page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
             yield context, page
         finally:
             try:

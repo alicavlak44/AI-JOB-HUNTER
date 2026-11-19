@@ -68,10 +68,10 @@ MIN_INVITE_INTERVAL_SEC = float(os.getenv("MIN_INVITE_INTERVAL_SEC", "20"))
 # Platform "olağandışı etkinlik / doğrulama / 429" gösterirse o platformda tüm bot işleri bu süre durur
 BLOCK_COOLDOWN_HOURS = float(os.getenv("BLOCK_COOLDOWN_HOURS", "24"))
 
+# Tarayıcı otomasyonu GİZLENMEZ (Chrome "otomatik test yazılımı tarafından kontrol ediliyor" der); platform
+# doğrulama isterse bot durur (guard). Bu ayarlar sadece pencere düzeni ve dil içindir.
 BROWSER_ARGS = [
-    "--disable-blink-features=AutomationControlled",
     "--start-maximized",
-    "--disable-infobars",
     "--no-sandbox",
     "--disable-notifications",
     "--disable-popup-blocking",
