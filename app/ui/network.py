@@ -5,11 +5,14 @@ import streamlit as st
 from app import account, context, guard
 from app.settings import MAX_DAILY_INVITES
 from app.ui.common import header, msg_kind
+from app.ui.netbot_card import netbot_card
 from browser.automator import find_hr_people, invite_people
 
 
 def page_network():
     header("İK Ağı", "Şehirdeki İK yöneticilerine notsuz bağlantı daveti. Ağınızdaki ve davet ettiğiniz kişiler hiç gelmez.")
+    netbot_card()
+    st.markdown("#### Elle davet")
     inv = guard.status("LinkedIn")["bağlantı daveti"]
     left = max(0, MAX_DAILY_INVITES - int(inv["bugün"].split("/")[0]))
     kc = account.known_counts()

@@ -1,8 +1,8 @@
 """🏠 Özet: tek bakışta durum — hesaplar, bugün ne oldu, başarı oranı, en önemli 3 öneri, sıradaki adım."""
 import streamlit as st
 
-from app import account, guard
-from app.settings import MAX_DAILY_INVITES, MAX_DAILY_APPLICATIONS
+from app import account, context, guard
+from app.settings import MAX_DAILY_APPLICATIONS
 from app.ui.common import header, show_flash
 from browser.automator import save_login_session, session_status
 from database import stats
@@ -42,10 +42,19 @@ def page_home():
     c[1].metric("Analiz edilen", today["Analiz edilen"])
     c[2].metric("Başvuru bugün", f"{g_li['başvuru']['bugün'].split('/')[0]} + {g_kn['başvuru']['bugün'].split('/')[0]}",
                 help=f"LinkedIn + Kariyer.net (platform başına günlük sınır {MAX_DAILY_APPLICATIONS})")
-    c[3].metric("İK daveti (bugün / sınır)", g_li["bağlantı daveti"]["bugün"].split("/")[0], help=f"Günlük sınır {MAX_DAILY_INVITES}")
+    c[3].metric("Davet (son 24 saat)", g_li["bağlantı daveti"]["bugün"].split("/")[0],
+                help="LinkedIn bağlantı davetleri (bot + elle). Ağ botunun sınırları için 'Botu yönet'e bakın.")
     for plat, g in (("LinkedIn", g_li), ("Kariyer.net", g_kn)):
         if g["engel"]:
             st.error(f"{plat} bot işlemleri durduruldu: {g['engel']}")
+    from app import netbot
+    from app.ui.netbot_card import STATE_STYLE
+    nb = netbot.status(context.current())
+    color, label = STATE_STYLE.get(nb["state"], ("gray", nb["state"]))
+    b1, b2 = st.columns([3, 1])
+    b1.markdown(f"**LinkedIn ağ botu** :{color}[● {label}] · son 24 saatte {nb['today']}, son 7 günde {nb['week']}/{netbot.WEEKLY} davet")
+    if "network" in st.session_state.get("_pages", {}):
+        b2.page_link(st.session_state["_pages"]["network"], label="Botu yönet", icon=":material/tune:")
 
     st.subheader("Başarı oranı")
     metrics = account.success_metrics()
