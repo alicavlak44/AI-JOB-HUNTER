@@ -17,3 +17,5 @@ legacy/
 # Kullanıcı profilleri / CV oluşturucu verileri
 profiles/
 *.db-journal
+# Tarayıcı profili kilidi (panel + arka plan botu)
+database/*.lock
