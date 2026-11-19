@@ -755,6 +755,11 @@ _MANAGER_RE = re.compile(r"(?<![\wçğıöşü])(?:müdür\w*|direktör\w*|direc
 _CIO_RE = re.compile(r"(?<![\wçğıöşü])(?:cio|ciso|chief information\w*)(?![\wçğıöşü])")
 
 
+def is_it_person(text):
+    """BT alanında çalışan (yönetici olması gerekmez): sistem/ağ/siber güvenlik/bilgi işlem unvanı."""
+    return bool(_IT_AREA_RE.search(tr_lower(text or "").replace("ı", "i")))
+
+
 def is_it_manager(text):
     t = tr_lower(text or "").replace("ı", "i")  # tr_lower('IT') = 'ıt' → 'it'
     return bool(_CIO_RE.search(t) or (_IT_AREA_RE.search(t) and _MANAGER_RE.search(t)))
@@ -921,15 +926,16 @@ def parse_person_card(card):
             "location": lines[2] if len(lines) > 2 else "", "text": card.get("text", "")}
 
 
-def filter_hr_people(cards, seen=lambda url, name: False):
-    """İK unvanlı, beklemede olmayan ve daha önce davet edilmemiş kişiler (kart sırası korunur)."""
+def filter_hr_people(cards, seen=lambda url, name: False, role="hr"):
+    """Unvanı hedefe uyan (role: "hr" İK/işe alım, "it" BT çalışanı), beklemede olmayan ve daha önce davet
+    edilmemiş kişiler (kart sırası korunur)."""
     out, urls = [], set()
     for c in cards:
         p = parse_person_card(c)
         text = " " + tr_lower(p["headline"]) + " "
         if not p["name"] or p["url"] in urls:
             continue
-        if not any(t in text for t in HR_TERMS):
+        if not (is_it_person(text) if role == "it" else any(t in text for t in HR_TERMS)):
             continue
         if any(t in tr_lower(p["text"]) for t in PENDING_TEXTS) or seen(p["url"], p["name"]):
             continue
@@ -951,7 +957,7 @@ def _already_invited(url, name):
     return bool(name) and guard.done_recently("LinkedIn", guard.INVITE, f"kişi={name};", days=365)
 
 
-def find_hr_people(query="İnsan Kaynakları Müdürü", city="Ankara", limit=15, max_pages=3, start_page=None):
+def find_hr_people(query="İnsan Kaynakları Müdürü", city="Ankara", limit=15, max_pages=3, start_page=None, role="hr"):
     """LinkedIn kişi aramasından İK yöneticilerini toplar (davet GÖNDERMEZ — sadece liste).
     Aynı arama tekrarlanınca kaldığı sayfadan devam eder (aynı kişiler tekrar taranmaz, sınır boşa gitmez).
     Dönüş: {"people": [...], "error": str|None, "next_page": int}"""
@@ -995,7 +1001,7 @@ def find_hr_people(query="İnsan Kaynakları Müdürü", city="Ankara", limit=15
                         page.wait_for_timeout(int(guard.random.uniform(3000, 5500)))
                 cards = page.evaluate(_CARDS_JS)
                 known = {p["url"] for p in out["people"]}
-                out["people"] += [p for p in filter_hr_people(cards, _already_invited) if p["url"] not in known]
+                out["people"] += [p for p in filter_hr_people(cards, _already_invited, role=role) if p["url"] not in known]
                 out["next_page"] = pg + 1 if cards else 1  # sonuç bittiyse baştan başla
                 if len(out["people"]) >= limit or not cards:
                     break

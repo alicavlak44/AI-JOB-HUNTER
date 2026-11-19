@@ -174,6 +174,14 @@ class HRPickTests(unittest.TestCase):
         self.assertEqual(got, ["b1", "b4", "b5"])
         self.assertEqual([p["url"] for p in pick_hr_profiles(cards, "Aselsan", limit=10)], ["b6"])
 
+    def test_it_person_filter(self):
+        from browser.automator import filter_hr_people
+        cards = [{"url": "https://www.linkedin.com/in/a", "text": "Ali Veli\n• 2.\nSistem Yöneticisi at X\nAnkara"},
+                 {"url": "https://www.linkedin.com/in/b", "text": "Ayşe Kaya\n• 2.\nMuhasebe Uzmanı\nAnkara"},
+                 {"url": "https://www.linkedin.com/in/c", "text": "Can Er\n• 1.\nNetwork Engineer\nAnkara"}]
+        got = [p["url"] for p in filter_hr_people(cards, role="it")]
+        self.assertEqual(got, ["https://www.linkedin.com/in/a"])   # muhasebe değil, 1. derece zaten bağlantı
+
     def test_city_word_does_not_match_every_card(self):
         self.assertEqual(pick_hr_profiles(self.CARDS, "Ankara Otomotiv", limit=5), [])
 
