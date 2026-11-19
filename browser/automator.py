@@ -30,14 +30,50 @@ SUBMIT_BUTTON_TEXTS = ["Başvuruyu Gönder", "Gönder", "Submit application", "S
 MAX_FORM_STEPS = 8
 
 
+BROWSER_LOCK_WAIT = float(os.getenv("BROWSER_LOCK_WAIT", "90"))
+
+
+@contextmanager
+def _profile_lock(profile_dir, wait=None):
+    """Aynı Chrome profilini iki süreç aynı anda açamaz (panel + arka plan ağ botu). Sıra bekler;
+    süre dolarsa anlaşılır bir hata verir."""
+    import fcntl
+    import time as _time
+    wait = BROWSER_LOCK_WAIT if wait is None else wait
+    os.makedirs(os.path.dirname(os.path.abspath(profile_dir)) or ".", exist_ok=True)
+    fh = open(os.path.abspath(profile_dir).rstrip("/") + ".lock", "w")
+    deadline = _time.time() + wait
+    try:
+        while True:
+            try:
+                fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if _time.time() >= deadline:
+                    raise PlaywrightError("Tarayıcı şu an başka bir işlemde kullanılıyor (arka plandaki LinkedIn ağ "
+                                          "botu olabilir). Bir iki dakika sonra tekrar deneyin.")
+                _time.sleep(2)
+        yield
+    finally:
+        try:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+        finally:
+            fh.close()
+
+
 @contextmanager
 def _browser():
-    """Kalıcı profil ile görünür Chrome açar; her durumda kapatır."""
-    with sync_playwright() as p:
-        context = p.chromium.launch_persistent_context(
-            user_data_dir=ctx.chrome_profile(), headless=False, channel="chrome",
-            args=BROWSER_ARGS, ignore_default_args=["--enable-automation"], no_viewport=True,
-        )
+    """Kalıcı profil ile görünür Chrome açar; her durumda kapatır. Profil başka süreçte açıksa sırasını bekler."""
+    with _profile_lock(ctx.chrome_profile()), sync_playwright() as p:
+        opts = dict(user_data_dir=ctx.chrome_profile(), headless=False, args=BROWSER_ARGS,
+                    ignore_default_args=["--enable-automation"], no_viewport=True)
+        try:
+            context = p.chromium.launch_persistent_context(channel="chrome", **opts)
+        except PlaywrightError as e:
+            if "chrome" not in str(e).lower() or "not found" not in str(e).lower():
+                raise
+            log.warning("Google Chrome bulunamadı; Playwright'ın Chromium'u kullanılıyor")
+            context = p.chromium.launch_persistent_context(**opts)  # playwright install chromium
         try:
             page = context.pages[0] if context.pages else context.new_page()
             page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
@@ -68,6 +104,23 @@ def _wait_until_closed(context, page, timeout_ms):
         pass
     except PlaywrightError:
         pass  # tarayıcı kapatıldı
+
+
+def _wait_user_finish(page, baseline, timeout_ms, poll_ms=3000):
+    """Kullanıcı eksik alanı doldurup gönderene kadar bekler. Onay metni görülürse HEMEN True döner
+    (pencereyi kapatmasını beklemez); pencere onaysız kapatılır ya da süre dolarsa False."""
+    waited = 0
+    while waited < timeout_ms:
+        try:
+            if page.is_closed():
+                return False
+            if _is_confirmed(page, baseline):
+                return True
+            page.wait_for_timeout(poll_ms)
+        except PlaywrightError:
+            return False  # pencere bu sırada kapandı
+        waited += poll_ms
+    return False
 
 
 # Oturumun açık olduğunu gösteren çerezler (bot profilinde kalıcıdır → bir kez giriş yeterli)
@@ -642,6 +695,7 @@ def run_application_bot(job_id, job_url, mode="yari", cv_path=None, wait_user_ms
             if sign:
                 return _human_check_result(page, job_id, mode, context, sign)
 
+            user_confirmed = False  # onay metni kullanıcı formu tamamlarken görüldü mü
             if mode == "tam":
                 answers = _cv_answers()
                 for step in range(MAX_FORM_STEPS):
@@ -660,10 +714,10 @@ def run_application_bot(job_id, job_url, mode="yari", cv_path=None, wait_user_ms
                                "LinkedIn yarım başvuruyu 'Devam Ediyor' altında saklar.)")
                         update_job_status(job_id, STATUS_AT_APPLY_SCREEN, error=msg)
                         log.info("İlan #%s: %s", job_id, msg)
-                        _wait_until_closed(context, page, wait_user_ms)
-                        if page.is_closed() or not _is_confirmed(page, baseline):
+                        if not _wait_user_finish(page, baseline, wait_user_ms):
                             # kullanıcı tamamlamadı (veya süre doldu): durum 'Başvuru Ekranında' kalsın, 'Doğrulanamadı' değil
                             return STATUS_AT_APPLY_SCREEN, msg
+                        user_confirmed = True
                         break
                     guard.human_pause(1.5, 4)
                     if _click_first(page, SUBMIT_BUTTON_TEXTS):
@@ -684,9 +738,9 @@ def run_application_bot(job_id, job_url, mode="yari", cv_path=None, wait_user_ms
                                "'Devam Ediyor' altında saklar.")
                         update_job_status(job_id, STATUS_AT_APPLY_SCREEN, error=msg)
                         log.info("İlan #%s: %s", job_id, msg)
-                        _wait_until_closed(context, page, wait_user_ms)
-                        if page.is_closed() or not _is_confirmed(page, baseline):
+                        if not _wait_user_finish(page, baseline, wait_user_ms):
                             return STATUS_AT_APPLY_SCREEN, msg
+                        user_confirmed = True
                         break
             else:
                 update_job_status(job_id, STATUS_AT_APPLY_SCREEN)
@@ -704,7 +758,7 @@ def run_application_bot(job_id, job_url, mode="yari", cv_path=None, wait_user_ms
                     except PlaywrightError:
                         break
 
-            if _is_confirmed(page, baseline):
+            if user_confirmed or (not page.is_closed() and _is_confirmed(page, baseline)):
                 update_job_status(job_id, STATUS_APPLIED_VERIFIED, applied=True)
                 _screenshot(page, f"job{job_id}_confirmed")
                 cv_note = f" Yüklenen CV: {os.path.basename(uploaded)}." if uploaded else " (Formda CV alanı yoktu / yüklenmedi.)"

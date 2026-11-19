@@ -80,8 +80,8 @@ def audit(p, job_text="", has_photo=False, template="modern", field="it"):
               "Sayı içeren madde örneği: '3 yerleşkede 18.000 kullanıcılı ağı yönettim.'")
         long_ = [b[:40] for b in bullets if len(b) > 220]
         short = [b[:40] for b in bullets if len(b) < 35]
-        check("Deneyim", not long_, "öneri", f"Maddeler 220 karakteri geçmiyor" + (f" — {len(long_)} uzun madde" if long_ else ""))
-        check("Deneyim", not short, "öneri", f"Maddeler çok kısa değil" + (f" — {len(short)} kısa madde" if short else ""),
+        check("Deneyim", not long_, "öneri", "Maddeler 220 karakteri geçmiyor" + (f" — {len(long_)} uzun madde" if long_ else ""))
+        check("Deneyim", not short, "öneri", "Maddeler çok kısa değil" + (f" — {len(short)} kısa madde" if short else ""),
               "Tek kelimelik maddeler yerine 'ne yaptım + hangi araçla + sonucu' yazın.")
         verbs = [_last_word(b) for b in bullets]
         past = sum(1 for v in verbs if _PAST_1SG.search(v)) / len(verbs)

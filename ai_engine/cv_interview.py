@@ -34,6 +34,15 @@ _NUM = re.compile(r"\d")
 
 
 # ---------------------------------------------------------------- yardımcılar
+def _field():
+    """Etkin kullanıcının alanı (it / ik / genel); bağlam yoksa 'genel'."""
+    try:
+        from app import context
+        return context.field() or "genel"
+    except Exception:
+        return "genel"
+
+
 def asked_keys(profile):
     """Daha önce sorulmuş (cevaplanmış ya da atlanmış) soruların anahtarları."""
     return {q.get("key") for q in profile.get("qa_log", [])}
@@ -105,7 +114,7 @@ def rule_questions(profile, original=""):
     if "linkedin" not in links:
         out.append(_q("linkedin", "links", "LinkedIn profil adresiniz nedir?",
                       "İK, CV'den sonra ilk LinkedIn'e bakar.", "linkedin.com/in/ad-soyad"))
-    if not any(k in links for k in ("github", "gitlab", "portfolio", "portfolyo", "blog")):
+    if _field() == "it" and not any(k in links for k in ("github", "gitlab", "portfolio", "portfolyo", "blog")):
         out.append(_q("github", "links", "Paylaşabileceğiniz bir GitHub / portfolyo / blog adresiniz var mı? (yoksa boş bırakın)",
                       "BT pozisyonlarında betik, otomasyon ya da laboratuvar çalışmalarınızı gösterir.", "github.com/kullanici-adi"))
     if len(p.get("summary", "")) < 250:
@@ -141,7 +150,10 @@ def ai_questions(profile, original="", target_title="", job_text="", previous=()
               "Sorular kısa, tek konulu, samimi ve Türkçe olsun. Sadece istenen JSON'u döndür.")
     prev = "\n".join(f"- {q}" for q in previous) or "-"
     from ai_engine import cv_audit
-    gaps = "\n".join(f"- {c['area']}: {c['msg']}" for c in cv_audit.failing(cv_audit.audit(profile, job_text))[:8]) or "-"
+    gaps = "\n".join(f"- {c['area']}: {c['msg']}"
+                     for c in cv_audit.failing(cv_audit.audit(profile, job_text, field=_field()))[:8]) or "-"
+    first = (profile.get("experience") or [{}])[0]
+    example_job = first.get("company") or "Son"
     user = f"""HEDEF UNVAN: {target_title or profile.get('headline') or '-'}
 {('HEDEF İLAN (özet):' + chr(10) + job_text[:2500]) if job_text else ''}
 
@@ -162,7 +174,7 @@ süre), sorumluluğun kapsamı (kaç kişi/cihaz/şube), kullanılan araçlar, �
 eksik görünen beceriler (adayın gerçekten bilip bilmediğini sor). CV'de zaten yazan şeyi sorma.
 KURALLAR: Her soru TEK soru işareti, en fazla 2 satır. Geçmişi sor, geleceği sorma. Varsayımda bulunma ve
 suçlama ("iddia ediyorsunuz") yapma. Yazım hatalarını sorma (onları sistem soruyor).
-İYİ ÖRNEK: "OSTİM Teknik Üniversitesi'ndeki Firewall kurallarını kaç kullanıcı / kaç yerleşke için yönettiniz?"
+İYİ ÖRNEK: "{example_job} işinizde bu sistemleri kaç kullanıcı / kaç şube için yönettiniz?"
 İYİ ÖRNEK: "SIEM tarafında hangi aracı kullandınız (Wazuh, Graylog, QRadar...)?"
 KÖTÜ ÖRNEK: "Mezun olmadan önce hangi projelerde liderlik edeceksiniz?" (gelecek + varsayım)
 KÖTÜ ÖRNEK: "Kesintiyi nasıl tespit ettiniz ve kaç dakikada çözdünüz?" (iki soru bir arada)

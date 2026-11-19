@@ -11,7 +11,7 @@ Yerel yapay zekâ ile çalışan iş arama asistanı: ilan bulur, CV'nize göre 
 | 🚀 **Toplu Başvuru** | Bekleyen ilanları analiz eder; uyumu %65+ olanlardan sizin seçtiklerinize başvurur |
 | 🤝 **İK Ağı** | Şehirdeki İK yöneticilerini bulur, notsuz davet gönderir. Bağlantılarınız ve davetlileriniz atlanır |
 | 📈 **Başarı** | Hesaplarınızdan (sadece okuyarak) başvuru → görüntülenme → mülakat oranları ve öneriler |
-| 📄 **CV Stüdyosu** | CV içe aktar, düzenle, yapay zekâyla güçlendir (uydurmasız), 4 şablonla PDF/Word üret |
+| 📄 **CV Stüdyosu** | CV içe aktar, 7 formattan birini seç, soru soran CV Koçu ile güçlendir (uydurmasız), canlı önizle, PDF/Word üret |
 | ⚙️ **Ayarlar** | Yapay zekâ durumu, hesap koruması limitleri, loglar |
 
 ## Güvenlik ilkeleri
@@ -32,6 +32,10 @@ Yerel yapay zekâ ile çalışan iş arama asistanı: ilan bulur, CV'nize göre 
 2. `.env` içinde adınızı ve modeli ayarlayın.
 3. [LM Studio](https://lmstudio.ai)'yu kurun, `qwen/qwen3.5-9b` (MLX 4-bit) modelini indirin ve sunucuyu başlatın: Developer → Start server.
 4. CV'nizi `documents/Cv.pdf` olarak koyun.
+5. Tarayıcı işlemleri bilgisayardaki Google Chrome ile yapılır (giriş oturumu kalıcı profilde saklanır). Chrome yoksa
+   Playwright'ın Chromium'u kullanılır (1. adımdaki `playwright install chromium`).
+6. LinkedIn ağ botunu arka planda çalıştırmak için: `nohup caffeinate -ims venv/bin/python scripts/ag_buyut.py >> logs/ag_botu.log 2>&1 &`
+   Bot ile panel aynı Chrome profilini kullanır; biri kullanırken diğeri sırasını bekler.
 5. Uygulamayı başlatın:
    ```bash
    venv/bin/streamlit run app/dashboard.py

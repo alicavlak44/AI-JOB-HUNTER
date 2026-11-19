@@ -7,7 +7,8 @@
 - recommendations(): sayılara ve profile bakarak başarı oranını artıracak somut öneriler (kural tabanlı).
 """
 import json
-import sqlite3
+
+from app import dbconn
 from datetime import datetime
 
 from app import guard
@@ -17,7 +18,7 @@ log = get_logger("account")
 
 
 def _connect():
-    conn = sqlite3.connect(guard.db_file(), timeout=10)
+    conn = dbconn.connect(guard.db_file())
     conn.execute("""CREATE TABLE IF NOT EXISTS known_people (
         url TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT, synced_at TEXT NOT NULL)""")
     conn.execute("""CREATE TABLE IF NOT EXISTS account_snapshot (
@@ -155,17 +156,18 @@ def recommendations(li=None, kn=None, avg_score=None):
         if prof.get("skills") is not None and prof["skills"] < 5:  # None = okunamadı → öneri yok
             recs.append((1, "LinkedIn 'Yetenekler' bölümünü doldurun",
                          "Yetenekler bölümü boş/az. İşe alımcılar aramada yeteneklere göre filtreler; CV'nizdeki "
-                         "Firewall, Active Directory, VMware/Proxmox, Linux, VLAN gibi 10-20 yetenek ekleyin."))
+                         "en güçlü 10-20 beceriyi (araç, teknoloji, yöntem) ekleyin."))
         if prof.get("about") is False:  # None = okunamadı → öneri yok
             recs.append((2, "'Hakkında' bölümü ekleyin",
-                         "3-4 cümlelik özet: 18.000+ kullanıcılı ağ yönetimi, firewall ve sanallaştırma deneyimi."))
+                         "3-4 cümlelik özet: en büyük ölçekli işiniz (kaç kullanıcı/kişi/şube), ana uzmanlıklarınız ve hedef "
+                         "unvanınız. CV Stüdyosu'ndaki özetinizi kullanabilirsiniz."))
         if not prof.get("verified"):
             recs.append((2, "Profilinizi doğrulayın",
                          "Doğrulanmış profiller daha çok görüntülenir ve davetleri daha sık kabul edilir."))
         if prof.get("open_to_work") == "recruiters":
             recs.append((3, "'Çalışmaya açık' görünürlüğü",
-                         "Şu an sadece işe alımcılar görüyor; bu doğru tercih (işvereniniz görmez). Unvanları "
-                         "'Sistem Yöneticisi, Ağ Yöneticisi, Network Engineer' olarak genişletin."))
+                         "Şu an sadece işe alımcılar görüyor; bu doğru tercih (işvereniniz görmez). Hedef unvanlarınızı "
+                         "benzer unvanlarla genişletin (Profil ve Ayarlar → Aranacak pozisyonlar)."))
         if prof.get("connections", 0) < 500:
             recs.append((2, "Ağı hedefli büyütün",
                          f"{prof.get('connections', 0)} bağlantı var. Hedef şirketlerdeki İK ve BT yöneticilerine "

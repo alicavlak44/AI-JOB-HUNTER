@@ -29,7 +29,8 @@ SECTION_NAMES = {
     "kişisel bilgiler": "contact", "iletişim": "contact", "beceriler": "skills", "yetenekler": "skills",
     "diller": "languages", "hobiler": "hobbies", "özet": "summary", "profil": "summary",
     "deneyim": "experience", "iş deneyimi": "experience", "eğitim": "education",
-    "sertifikalar": "certificates",
+    "sertifikalar": "certificates", "yetkinlikler": "skills", "kariyer yolculuğu": "experience",
+    "ek bilgiler": "hobbies", "öne çıkan başarılar": "highlights", "iletişim bilgileri": "contact",
 }
 _DATE_LINE = re.compile(r"^(?:(?:\w+\s+)?(?:19|20)\d{2}(?:\s*[–—-].*)?|tarih)$", re.IGNORECASE)
 
@@ -66,6 +67,10 @@ class ParsedCV:
     warnings: list = field(default_factory=list)
 
 
+def tr_lower(s):
+    return (s or "").replace("I", "ı").replace("İ", "i").lower()
+
+
 def tr_upper(s):
     return s.replace("i", "İ").replace("ı", "I").upper()
 
@@ -86,7 +91,7 @@ def _clean(s):
 def _split_sections(lines):
     sections, current, header = {}, None, []
     for line in lines:
-        key = SECTION_NAMES.get(line.strip().lower())
+        key = SECTION_NAMES.get(tr_lower(line.strip()))  # .lower(): 'DENEYİM' → 'deneyi̇m' (eşleşmez)
         if key:
             current = key
             sections.setdefault(key, [])
@@ -98,13 +103,22 @@ def _split_sections(lines):
     return header, sections
 
 
-def _find_name_and_headline(lines):
-    """Tamamı büyük harf 2-4 kelimelik satır = ad; ardından gelen satır = başlık."""
+def _find_name_and_headline(lines, allow_title_case=False):
+    """Tamamı büyük harf 2-4 kelimelik satır = ad; ardından gelen satır = başlık.
+    allow_title_case: CV'nin en üstündeki ilk dolu satır 'Ali Cavlak' gibi normal yazılmış ad olabilir."""
     for i, line in enumerate(lines):
         words = line.split()
         if 2 <= len(words) <= 4 and line.isupper() and all(w.isalpha() for w in words):
             headline = lines[i + 1].strip() if i + 1 < len(lines) else ""
             return line.strip(), headline, i
+    if allow_title_case:
+        filled = [(i, l.strip()) for i, l in enumerate(lines) if l.strip()]
+        if filled:
+            i, line = filled[0]
+            words = line.split()
+            if 2 <= len(words) <= 4 and all(w.isalpha() and w[0].isupper() for w in words):
+                headline = filled[1][1] if len(filled) > 1 else ""
+                return line, headline, i
     return "", "", -1
 
 
@@ -155,6 +169,22 @@ def _parse_experience(lines, warnings):
         if cur and cur.bullets and not cur.bullets[-1].text.rstrip().endswith((".", ")", "!")) and not buffer:
             cur.bullets[-1].text += " " + line
             continue
+        m = PERIOD_RE.search(line)
+        if m and line[:m.start()].strip(" ·|-–—,"):
+            cur = Experience(id=f"E{len(entries) + 1}", title=line[:m.start()].strip(" ·|-–—,"), dates=m.group(0))
+            cur.inline = True  # madde işaretsiz PDF: şirket satırından sonraki her cümle bir madde
+            entries.append(cur)
+            buffer = []
+            continue
+        if cur is not None and getattr(cur, "inline", False):
+            if not cur.company and not cur.bullets:
+                parts = [x.strip() for x in line.split("·")]
+                cur.company, cur.city = parts[0], (parts[1] if len(parts) > 1 else "")
+            elif not cur.bullets or cur.bullets[-1].text.rstrip().endswith((".", ")", "!")):
+                cur.bullets.append(Bullet(f"{cur.id}.B{len(cur.bullets) + 1}", line))
+            else:
+                cur.bullets[-1].text += " " + line
+            continue
         if PERIOD_RE.search(line):
             head = buffer[-3:]
             cur = Experience(id=f"E{len(entries) + 1}", title=head[0] if head else "",
@@ -191,6 +221,56 @@ def _group_by_date(lines, warnings, label):
     return groups
 
 
+def parsed_from_profile(p):
+    """CV Stüdyosu profili (profile.json) → ParsedCV. PDF ayrıştırmaya gerek kalmaz (madde/başlık kaybı yok)."""
+    exp = []
+    for i, e in enumerate(p.get("experience", []), 1):
+        exp.append(Experience(id=f"E{i}", title=e.get("title", ""), company=e.get("company", ""), city=e.get("city", ""),
+                              dates=e.get("dates", ""),
+                              bullets=[Bullet(f"E{i}.B{j}", b["text"]) for j, b in enumerate(e.get("bullets", []), 1)]))
+    return ParsedCV(
+        name=p.get("name", ""), headline=p.get("headline", ""),
+        contact=[x for x in (p.get("email"), p.get("phone"), p.get("city"), *p.get("links", [])) if x],
+        summary=p.get("summary", ""),
+        skill_groups=[(g["group"], list(g["items"])) for g in p.get("skills", []) if g.get("items")],
+        experience=exp, education=[[x] for x in p.get("education", []) if x],
+        certificates=[[x] for x in p.get("certificates", []) if x],
+        languages=p.get("languages", ""), hobbies="; ".join(p.get("extras", [])),
+    )
+
+
+def profile_text(p):
+    """Profilin düz metni (uydurma denetimi ve deneyim yılı hesabı için kaynak)."""
+    lines = [p.get("name", ""), p.get("headline", ""), " · ".join(x for x in (p.get("email"), p.get("phone"),
+             p.get("city"), *p.get("links", [])) if x), "Özet", p.get("summary", ""), "Deneyim"]
+    for e in p.get("experience", []):
+        lines += [e.get("title", ""), " · ".join(x for x in (e.get("company"), e.get("city")) if x), e.get("dates", "")]
+        lines += [b["text"] for b in e.get("bullets", [])]
+    lines += ["Beceriler"] + [f"{g['group']}: {', '.join(g['items'])}" for g in p.get("skills", [])]
+    lines += ["Eğitim"] + list(p.get("education", [])) + ["Sertifikalar"] + list(p.get("certificates", []))
+    lines += ["Diller", p.get("languages", "")] + list(p.get("extras", []))
+    return "\n".join(x for x in lines if x)
+
+
+def cv_source():
+    """İlana özel CV'nin kaynağı: (cv_text, parsed).
+    CV Stüdyosu profili, başvurularda kullanılmak üzere seçildiyse ya da ana CV dosyasından yeniyse onu kullanır;
+    değilse ana CV (PDF) okunur."""
+    from ai_engine import cv_studio as cs
+    from ai_engine.brain import read_cv_text
+    from app import context
+    slug = context.current()
+    prof = os.path.join(cs.PROFILES_DIR, slug, "profile.json")
+    cv_file = context.cv_path()
+    chosen = os.path.abspath(cv_file) == os.path.abspath(os.path.join(context.user_dir(), "cv.pdf"))
+    if os.path.exists(prof) and (chosen or not os.path.exists(cv_file) or os.path.getmtime(prof) >= os.path.getmtime(cv_file)):
+        p, original = cs.load_profile(slug)
+        if p.get("experience"):
+            return profile_text(p) + "\n" + (original or "") + "\n" + cs.source_text(p), parsed_from_profile(p)
+    cv_text = read_cv_text()
+    return cv_text, (parse_cv(cv_text) if cv_text else ParsedCV())
+
+
 def parse_cv(cv_text):
     lines = [l.rstrip() for l in cv_text.splitlines()]
     header, sec = _split_sections(lines)
@@ -199,7 +279,7 @@ def parse_cv(cv_text):
     # Ad/başlık sayfa düzenine göre herhangi bir bölümün sonunda olabilir (iki sütunlu PDF)
     for key in [None] + list(sec):
         block = header if key is None else sec[key]
-        name, headline, idx = _find_name_and_headline(block)
+        name, headline, idx = _find_name_and_headline(block, allow_title_case=key is None)
         if name:
             cv.name, cv.headline = name, headline
             del block[idx:idx + 2]
@@ -487,11 +567,10 @@ def docx_text(path):
 # ------------------------------------------------------------------ Ana giriş
 def build_tailored_cv(job_id, job_title, company, job_desc, model=None):
     """İlana özel CV üretir. Dönüş: {"path", "report"}. Hata durumunda AIError fırlatır."""
-    from ai_engine.brain import read_cv_text, AIError, _safe_filename
-    cv_text = read_cv_text()
+    from ai_engine.brain import AIError, _safe_filename
+    cv_text, parsed = cv_source()
     if not cv_text:
         raise AIError("CV bulunamadı — Profil ve Ayarlar sayfasından CV yükleyin")
-    parsed = parse_cv(cv_text)
     if not parsed.experience:
         raise AIError("CV'nin deneyim bölümü okunamadı; ilana özel CV üretilemiyor.")
     profile = build_profile(cv_text)

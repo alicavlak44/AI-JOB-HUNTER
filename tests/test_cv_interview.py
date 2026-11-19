@@ -1,5 +1,4 @@
 """CV Koçu (soru → cevap → denetimli güncelleme) ve CV şablonları. Model gerektirmez."""
-import copy
 import unittest
 from unittest import mock
 
@@ -168,9 +167,12 @@ class QuestionQualityTests(unittest.TestCase):
         p["languages"] = "İngilizce"
         p["certificates"] = ["CCNA · Cisco", "Labris Firewall · 2024"]
         p["links"] = []
-        keys = {q["key"] for q in ci.rule_questions(p, ORIGINAL)}
+        with mock.patch.object(ci, "_field", return_value="it"):
+            keys = {q["key"] for q in ci.rule_questions(p, ORIGINAL)}
         self.assertTrue({"langlevel", "certyear:0", "linkedin", "github", "extras"} <= keys)
         self.assertNotIn("certyear:1", keys)
+        with mock.patch.object(ci, "_field", return_value="ik"):   # BT dışı kullanıcıya GitHub sorulmaz
+            self.assertNotIn("github", {q["key"] for q in ci.rule_questions(p, ORIGINAL)})
 
     def test_language_level_cert_year_links_edits(self):
         p = sample()

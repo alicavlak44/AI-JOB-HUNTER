@@ -178,8 +178,9 @@ def qa(slug=None):
     return {k: v for k, v in (user(slug).get("qa") or {}).items() if str(v).strip()}
 
 
-def set_answers(answers: dict, slug=None):
-    """answers: {soru metni: cevap}. Boş cevap = soruyu hafızadan sil."""
+def set_answers(answers: dict, slug=None, removed=()):
+    """answers: {soru metni: cevap}. Boş cevap = soruyu hafızadan sil.
+    removed: tablodan silinen sorular (hem cevaplardan hem bekleyenlerden çıkarılır)."""
     slug = slug or current()
     users = load_users()
     q = dict(users[slug].get("qa") or {})
@@ -189,8 +190,11 @@ def set_answers(answers: dict, slug=None):
             q[k] = str(v).strip()
         else:
             q.pop(k, None)
+    gone = {norm_q(r) for r in removed}
+    for k in gone:
+        q.pop(k, None)
     users[slug]["qa"] = q
-    pend = [p for p in users[slug].get("qa_pending", []) if norm_q(p) not in q]
+    pend = [p for p in users[slug].get("qa_pending", []) if norm_q(p) not in q and norm_q(p) not in gone]
     users[slug]["qa_pending"] = pend
     save_users(users)
 

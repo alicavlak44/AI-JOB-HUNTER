@@ -93,11 +93,11 @@ def typo_warnings(text: str):
 
 def profile_from_text(text: str) -> dict:
     """CV metnini yapılandırılmış profile çevirir (kural tabanlı ayrıştırıcı; model gerekmez)."""
-    from ai_engine.cv_builder import parse_cv
+    from ai_engine.cv_builder import parse_cv, tr_title
     text = fix_pdf_artifacts(text)
     cv = parse_cv(text)
     p = empty_profile()
-    p["name"], p["headline"], p["summary"] = cv.name.title() if cv.name.isupper() else cv.name, cv.headline, cv.summary
+    p["name"], p["headline"], p["summary"] = tr_title(cv.name) if cv.name.isupper() else cv.name, cv.headline, cv.summary
     contact = " ".join(cv.contact) + "\n" + text[:1500]
     m = EMAIL_RE.search(contact)
     p["email"] = m.group(0) if m else ""
@@ -149,7 +149,10 @@ def load_profile(slug):
     with open(os.path.join(d, "profile.json"), encoding="utf-8") as f:
         p = {**empty_profile(), **json.load(f)}
     src = os.path.join(d, "kaynak_cv.txt")
-    original = open(src, encoding="utf-8").read() if os.path.exists(src) else ""
+    original = ""
+    if os.path.exists(src):
+        with open(src, encoding="utf-8") as f:
+            original = f.read()
     return p, original
 
 
@@ -173,34 +176,8 @@ def photo_data_uri(slug, portrait=False):
     return None
 
 
-# ---------------------------------------------------------------- doluluk puanı ("albeni" ölçüsü)
+# ---------------------------------------------------------------- ölçülebilir madde (sayı içeren)
 _NUM = re.compile(r"\d")
-
-
-def completeness(profile: dict, has_photo=False):
-    """0-100 puan ve eksik listesi. İşverenin ilk 6 saniyede baktığı şeylere göre ağırlıklı."""
-    checks = [
-        (10, bool(profile.get("name")), "Ad soyad"),
-        (10, bool(profile.get("headline")), "Başlık (hedef unvan) — ör. 'Ağ ve Sistem Yöneticisi'"),
-        (10, bool(profile.get("email")) and bool(profile.get("phone")), "E-posta ve telefon"),
-        (10, 250 <= len(profile.get("summary", "")) <= 900, "3-5 cümlelik özet (250-900 karakter)"),
-        (15, sum(len(g["items"]) for g in profile.get("skills", [])) >= 10, "En az 10 beceri"),
-        (15, len(profile.get("experience", [])) >= 1 and all(len(e["bullets"]) >= 2 for e in profile["experience"][:2]),
-         "Son iki işte en az 2'şer madde"),
-        (10, any(_NUM.search(b["text"]) for e in profile.get("experience", []) for b in e["bullets"]),
-         "Ölçülebilir sonuç (sayı içeren madde: kullanıcı sayısı, sunucu sayısı, % iyileşme...)"),
-        (10, bool(profile.get("education")), "Eğitim"),
-        (5, bool(profile.get("certificates")), "Sertifika"),
-        (5, bool(profile.get("languages")), "Yabancı dil"),
-    ]
-    score = sum(w for w, ok, _ in checks if ok)
-    missing = [label for w, ok, label in checks if not ok]
-    if not has_photo:
-        missing.append("(isteğe bağlı) Fotoğraf — Türkiye'de çoğu işveren bekler; ATS şablonunda kullanılmaz")
-    long_bullets = [b["text"][:40] for e in profile.get("experience", []) for b in e["bullets"] if len(b["text"]) > 220]
-    if long_bullets:
-        missing.append(f"{len(long_bullets)} madde çok uzun (220+ karakter): kısaltın")
-    return score, missing
 
 
 # ---------------------------------------------------------------- yapay zeka iyileştirme (uydurmasız)

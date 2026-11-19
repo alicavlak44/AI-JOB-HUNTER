@@ -11,12 +11,11 @@ Bu modül platform korumalarını aşmaz (CAPTCHA çözmez, gizlenmez); sadece h
 insan hızının altında tutar ve uyarı görünce durur.
 """
 import random
-import sqlite3
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from app import settings
+from app import dbconn, settings
 from app.logger import get_logger
 
 log = get_logger("guard")
@@ -63,7 +62,7 @@ class Decision:
 
 
 def _connect():
-    conn = sqlite3.connect(db_file(), timeout=10)
+    conn = dbconn.connect(db_file())
     conn.execute("""CREATE TABLE IF NOT EXISTS activity_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         platform TEXT NOT NULL, action TEXT NOT NULL, detail TEXT, created_at TEXT NOT NULL)""")

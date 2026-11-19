@@ -2,7 +2,7 @@
 import pandas as pd
 import streamlit as st
 
-from app import account, guard
+from app import account, context, guard
 from app.settings import MAX_DAILY_INVITES
 from app.ui.common import header, msg_kind
 from browser.automator import find_hr_people, invite_people
@@ -21,7 +21,7 @@ def page_network():
     with st.container(border=True):
         n1, n2, n3 = st.columns([2, 1, 1])
         q = n1.text_input("Unvan", value="İnsan Kaynakları Müdürü")
-        city = n2.text_input("Şehir", value="Ankara", key="hr_city")
+        city = n2.text_input("Şehir", value=context.user().get("city") or "Ankara", key="hr_city")
         limit = n3.number_input("En fazla kişi", 1, 30, max(1, min(10, left or 10)))
         b1, b2 = st.columns(2)
         if b1.button("🔎 Bul ve listele", width="stretch"):

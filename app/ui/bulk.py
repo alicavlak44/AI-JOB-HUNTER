@@ -56,8 +56,12 @@ def page_bulk():
                              help="Şirket adıyla eşleşen, ağınızda olmayan 1 İK kişisi otomatik seçilir.")
         mode = o2.radio("Mod", ["Tam otonom", "Yarı otonom"], horizontal=True,
                         help="Tam: boş zorunlu alanda durur. Yarı: formu siz gönderirsiniz.")
-        used = guard.status("LinkedIn")["başvuru"]["bugün"]
-        st.caption(f"🛡️ LinkedIn bugün: {used} başvuru (sınır {MAX_DAILY_APPLICATIONS}). Açılan Chrome penceresini kapatmayın.")
+        used = {p: guard.status(p)["başvuru"]["bugün"] for p in ("LinkedIn", "Kariyer.net")}
+        blocked = [p for p in used if guard.status(p)["engel"]]
+        st.caption(f"Bugün: LinkedIn {used['LinkedIn']} · Kariyer.net {used['Kariyer.net']} başvuru "
+                   f"(platform başına sınır {MAX_DAILY_APPLICATIONS}). Açılan Chrome penceresini kapatmayın.")
+        if blocked:
+            st.warning(f"Şu an durdurulmuş platform: {', '.join(blocked)} — bu platformun ilanları atlanır.")
         if st.button(f"🚀 Seçilen {len(approved)} ilana başvur", type="primary", disabled=not approved, width="stretch"):
             rows = [r.to_dict() for _, r in jobs[jobs["id"].isin(approved)].iterrows()]
             with st.status(f"{len(rows)} ilan için başvuru sürüyor...", expanded=True) as box:

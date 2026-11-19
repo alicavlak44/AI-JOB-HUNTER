@@ -36,14 +36,16 @@ def page_home():
     jobs = get_all_jobs()
     st.subheader("Bugün")
     today = stats.summary(jobs)["today"]
-    g_li = guard.status("LinkedIn")
+    g_li, g_kn = guard.status("LinkedIn"), guard.status("Kariyer.net")
     c = st.columns(4)
     c[0].metric("Bulunan ilan", today["Bulunan ilan"])
     c[1].metric("Analiz edilen", today["Analiz edilen"])
-    c[2].metric("Başvuru (bugün / sınır)", g_li["başvuru"]["bugün"].split("/")[0], help=f"Günlük sınır {MAX_DAILY_APPLICATIONS}")
+    c[2].metric("Başvuru bugün", f"{g_li['başvuru']['bugün'].split('/')[0]} + {g_kn['başvuru']['bugün'].split('/')[0]}",
+                help=f"LinkedIn + Kariyer.net (platform başına günlük sınır {MAX_DAILY_APPLICATIONS})")
     c[3].metric("İK daveti (bugün / sınır)", g_li["bağlantı daveti"]["bugün"].split("/")[0], help=f"Günlük sınır {MAX_DAILY_INVITES}")
-    if g_li["engel"]:
-        st.error(f"🛡️ LinkedIn bot işlemleri durduruldu: {g_li['engel']}")
+    for plat, g in (("LinkedIn", g_li), ("Kariyer.net", g_kn)):
+        if g["engel"]:
+            st.error(f"{plat} bot işlemleri durduruldu: {g['engel']}")
 
     st.subheader("Başarı oranı")
     metrics = account.success_metrics()

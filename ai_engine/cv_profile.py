@@ -27,9 +27,11 @@ TR_MONTHS = {
 }
 PRESENT_WORDS = r"(?:günümüz|halen|devam ediyor|present|current|now)"
 _MONTH_RE = "|".join(sorted(TR_MONTHS, key=len, reverse=True))
+# Ay: tam ad ya da 3 harfli kısaltma ("Oca", "Mar", "Sep"); ya da sayı ("01/2022", "01.2022")
+_MON = rf"(?:\b(?:{_MONTH_RE}|[a-zçğıöşü]{{3}})\.?|\b(?:0?[1-9]|1[0-2])\s*[./])"
 PERIOD_RE = re.compile(
-    rf"(?P<m1>{_MONTH_RE})\s+(?P<y1>(?:19|20)\d{{2}})\s*[–—-]\s*"
-    rf"(?:(?P<m2>{_MONTH_RE})\s+(?P<y2>(?:19|20)\d{{2}})|(?P<now>{PRESENT_WORDS}))",
+    rf"(?P<m1>{_MON})?\s*(?P<y1>(?:19|20)\d{{2}})\s*[–—-]\s*"
+    rf"(?:(?P<m2>{_MON})?\s*(?P<y2>(?:19|20)\d{{2}})|(?P<now>{PRESENT_WORDS}))",
     re.IGNORECASE,
 )
 # Bu kelimeleri içeren pozisyonlar profesyonel deneyime sayılmaz
@@ -112,6 +114,18 @@ def _experience_section(cv_text):
     return "\n".join(lines[start + 1:end])
 
 
+def month_of(tok, default=1):
+    """'Ocak' / 'Oca' / 'Jan' / '01/' → ay numarası; ay yoksa ya da tanınmazsa default (yalnız yıl: 'Ocak' sayılır)."""
+    t = tr_lower(tok or "").strip(" ./")
+    if not t:
+        return default
+    if t.isdigit():
+        return int(t) if 1 <= int(t) <= 12 else default
+    if t in TR_MONTHS:
+        return TR_MONTHS[t]
+    return next((n for name, n in TR_MONTHS.items() if len(t) >= 3 and name.startswith(t)), default)
+
+
 def extract_periods(cv_text, today=None):
     today = today or date.today()
     lines = _experience_section(cv_text).splitlines()
@@ -120,11 +134,14 @@ def extract_periods(cv_text, today=None):
         m = PERIOD_RE.search(tr_lower(line))
         if not m:
             continue
-        start = date(int(m["y1"]), TR_MONTHS[tr_lower(m["m1"])], 1)
-        end = today.replace(day=1) if m["now"] else date(int(m["y2"]), TR_MONTHS[tr_lower(m["m2"])], 1)
+        start = date(int(m["y1"]), month_of(m["m1"]), 1)
+        end = today.replace(day=1) if m["now"] else date(int(m["y2"]), month_of(m["m2"]), 1)
         if end < start:
             continue
-        context = tr_lower(" ".join(lines[max(0, i - 3):i]))
+        # Unvan tarihle aynı satırdaysa ("Bilgi İşlem Stajyeri  Temmuz 2021 – Ağustos 2021") sadece o satıra bakılır;
+        # yoksa unvan önceki satırlardadır (üstteki 3 satır önceki işin maddeleri olabilir, o yüzden ayrı tutulur)
+        inline = tr_lower(line[:m.start()]).strip(" ·|-–—,")
+        context = inline if inline else tr_lower(" ".join(lines[max(0, i - 3):i]))
         title = _title_before(lines, i)
         professional = not any(w in context for w in NON_PROFESSIONAL)
         periods.append(Period(title=title, start=start, end=end, professional=professional))
@@ -155,8 +172,7 @@ def _profile_path():
     return context.extra_profile_path()
 
 
-def load_extra_profile():
-    """documents/profile.json: CV'de olmayan ama formlarda sorulan bilgiler (ehliyet, askerlik...)."""
+def _read_extra_file():
     try:
         with open(_profile_path(), encoding="utf-8") as f:
             return json.load(f)
@@ -164,10 +180,61 @@ def load_extra_profile():
         return {}
 
 
+# Serbest metin cevap → True / False / None (emin değilse None: ön yazıda iddia edilmez)
+_YES_NO = {
+    "driving_license": (r"\b(var|evet|yes|[abcde]\d?\s*sınıf\w*|b\b)", r"\b(yok|hayır|no)\b"),
+    "military_done": (r"(yapıldı|yaptım|tamam|muaf|bitti|bedelli)", r"(yapılmadı|yapmadım|yükümlü)"),
+    "can_travel": (r"(engel yok|engelim yok|evet|uygun|edebilirim|olur)", r"(engel var|hayır|edemem|uygun değil)"),
+    "night_shift_ok": (r"(evet|uygun|çalışabilirim|olur)", r"(hayır|uygun değil|çalışamam)"),
+}
+
+
+def interpret_answer(key, text):
+    t = tr_lower(text or "")
+    if not t.strip() or key not in _YES_NO:
+        return None
+    yes, no = _YES_NO[key]
+    if re.search(no, t):
+        return False
+    return True if re.search(yes, t) else None
+
+
+def _derived_extras():
+    """Kullanıcının başka yerlerde verdiği cevaplar: Ayarlar → 'Form cevaplarım' ve CV Koçu'nun ek bilgileri."""
+    from app import context
+    out = {}
+    fa = (context.user() or {}).get("form_answers") or {}
+    for src_key, key in (("license", "driving_license"), ("military", "military_done"), ("relocate", "can_travel")):
+        val = interpret_answer(key, fa.get(src_key))
+        if val is not None:
+            out[key] = val
+    try:
+        from ai_engine import cv_studio as cs
+        prof, _ = cs.load_profile(context.current())
+        for line in prof.get("extras", []):
+            low = tr_lower(line)
+            for word, key in (("ehliyet", "driving_license"), ("sürücü", "driving_license"), ("askerlik", "military_done")):
+                if word in low and key not in out:
+                    val = interpret_answer(key, line)
+                    if val is not None:
+                        out[key] = val
+    except (FileNotFoundError, OSError, ValueError):
+        pass
+    return out
+
+
+def load_extra_profile():
+    """CV'de olmayan ama formlarda sorulan bilgiler (ehliyet, askerlik, seyahat...).
+    Öncelik: ek profil dosyası (açıkça true/false) > Ayarlar'daki form cevapları > CV Koçu'nun ek bilgileri."""
+    data = _derived_extras()
+    data.update({k: v for k, v in _read_extra_file().items() if v is not None})
+    return data
+
+
 def save_extra_profile(data: dict):
     """documents/profile.json dosyasını güvenli biçimde kaydeder."""
     os.makedirs(os.path.dirname(_profile_path()), exist_ok=True)
-    current = load_extra_profile()
+    current = _read_extra_file()
     current.update(data)
     with open(_profile_path(), "w", encoding="utf-8") as f:
         json.dump(current, f, ensure_ascii=False, indent=2)

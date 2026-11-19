@@ -514,8 +514,13 @@ def _edit(slug, p):
         e["bullets"] = [{"text": t.strip(), "user": old.get(t.strip(), True)} for t in text.splitlines() if t.strip()]
     text = st.text_area("Beceriler (her satır: Grup: beceri1, beceri2)",
                         "\n".join(f"{g['group']}: {', '.join(g['items'])}" for g in p["skills"]), height=150, key=_k(slug, "e_sk"))
-    p["skills"] = [{"group": l.split(":", 1)[0].strip(), "items": [x.strip() for x in l.split(":", 1)[1].split(",") if x.strip()]}
-                   for l in text.splitlines() if ":" in l]
+    skills = []
+    for line in (l.strip() for l in text.splitlines()):
+        if not line:
+            continue
+        group, items = line.split(":", 1) if ":" in line else ("Diğer", line)  # grupsuz satır silinmesin
+        skills.append({"group": group.strip() or "Diğer", "items": [x.strip() for x in items.split(",") if x.strip()]})
+    p["skills"] = [g for g in skills if g["items"]]
     p["education"] = [x for x in st.text_area("Eğitim (her satır bir okul)", "\n".join(p["education"]), key=_k(slug, "e_ed")).splitlines() if x.strip()]
     p["certificates"] = [x for x in st.text_area("Sertifikalar", "\n".join(p["certificates"]), key=_k(slug, "e_ce")).splitlines() if x.strip()]
     p["languages"] = st.text_input("Diller", p["languages"], key=_k(slug, "e_la"))

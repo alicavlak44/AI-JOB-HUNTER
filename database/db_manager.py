@@ -8,6 +8,7 @@ import pandas as pd
 
 from app.logger import get_logger
 from app import context
+from app import dbconn
 from app.settings import STATUS_NEW, STATUS_ANALYZED, STATUS_APPLY_UNVERIFIED, STATUS_APPLIED_VERIFIED
 
 log = get_logger("db")
@@ -31,7 +32,7 @@ _EXTRA_COLUMNS = {
 
 @contextmanager
 def _connect():
-    conn = sqlite3.connect(context.db_path(), timeout=10)
+    conn = dbconn.connect(context.db_path())
     try:
         yield conn
         conn.commit()
@@ -98,8 +99,19 @@ def insert_job(source, title, company, city, url, details=""):
         return False
 
 
+_READY = set()  # bu süreçte kurulumu (tablo/göç) yapılmış veritabanı dosyaları
+
+
+def _ensure_db():
+    """init_db her sayfa yenilemesinde yazma işlemi yapmasın: dosya başına süreç içinde bir kez."""
+    path = context.db_path()
+    if path not in _READY or not os.path.exists(path):
+        init_db()
+        _READY.add(path)
+
+
 def get_all_jobs():
-    init_db()
+    _ensure_db()
     with _connect() as conn:
         return pd.read_sql_query("""
             SELECT id, source as 'Kaynak', title as 'Pozisyon', company as 'Şirket',
@@ -168,6 +180,10 @@ def reset_database():
     if os.path.exists(db):
         backup = db + ".bak"
         os.replace(db, backup)
+        for ext in ("-wal", "-shm"):  # WAL dosyaları yeni (boş) veritabanına uygulanmasın
+            if os.path.exists(db + ext):
+                os.replace(db + ext, backup + ext)
+        _READY.discard(db)
         log.warning("Veritabanı sıfırlandı, eski kopya: %s", backup)
     init_db()
 

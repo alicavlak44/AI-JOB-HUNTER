@@ -62,17 +62,18 @@ def page_settings():
            [{"Soru": q, "Cevabınız": a} for q, a in (uq.get("qa") or {}).items()]
     if pending:
         st.warning(f"⏸️ {len(pending)} soru cevabınızı bekliyor (tablonun başında, cevap sütunu boş).")
-    if rows:
-        edited = st.data_editor(pd.DataFrame(rows), hide_index=True, width="stretch", num_rows="dynamic",
-                                key=f"qa_{context.current()}", disabled=["Soru"] if pending else [],
-                                column_config={"Soru": st.column_config.TextColumn(width="large"),
-                                               "Cevabınız": st.column_config.TextColumn(help="Evet/Hayır sorusunda: Yes/No veya Evet/Hayır")})
-        if st.button("💾 Cevapları kaydet", type="primary"):
-            context.set_answers({r["Soru"]: r["Cevabınız"] or "" for r in edited.to_dict("records") if r.get("Soru")})
-            st.success("Kaydedildi; bot sonraki başvurularda kullanacak.")
-            st.rerun()
-    else:
-        st.caption("Henüz kayıtlı soru yok.")
+    if not rows:
+        st.caption("Henüz kayıtlı soru yok; aşağıdaki tabloya kendiniz de soru ve cevap ekleyebilirsiniz.")
+    edited = st.data_editor(pd.DataFrame(rows, columns=["Soru", "Cevabınız"]), hide_index=True, width="stretch",
+                            num_rows="dynamic", key=f"qa_{context.current()}",
+                            column_config={"Soru": st.column_config.TextColumn(width="large"),
+                                           "Cevabınız": st.column_config.TextColumn(help="Evet/Hayır sorusunda: Yes/No veya Evet/Hayır")})
+    if st.button("Cevapları kaydet", type="primary"):
+        kept = {r["Soru"]: r["Cevabınız"] or "" for r in edited.to_dict("records") if r.get("Soru")}
+        removed = [r["Soru"] for r in rows if r["Soru"] not in kept]  # tablodan silinen satırlar
+        context.set_answers(kept, removed=removed)
+        st.success("Kaydedildi; bot sonraki başvurularda kullanacak.")
+        st.rerun()
 
     st.subheader("Hesap koruması")
     rows = []
