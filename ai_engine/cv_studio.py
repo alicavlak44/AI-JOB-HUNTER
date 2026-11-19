@@ -210,7 +210,7 @@ def _profile_prompt(p):
 def improve(profile: dict, original: str, target_title: str = "", model=None):
     """Başlık, özet ve maddeler için öneriler. Her öneri kaynakla karşılaştırılır; uydurma içeren REDDEDİLİR.
     Dönüş: {"accepted": [{"where","old","new"}], "rejected": [{"where","new","why"}]}"""
-    from ai_engine.brain import _chat_json
+    from ai_engine.brain import _chat_json, fast_model
     from ai_engine.cv_builder import check_text
     from ai_engine.cv_profile import build_profile
     src = source_text(profile, original)
@@ -233,7 +233,7 @@ GÖREV:
 - bullets: Etkisi zayıf maddeleri yeniden yaz: güçlü fiille başlasın ("Yönettim", "Kurdum", "Tasarladım"),
   varsa sayıyı öne çıkarsın, tek cümle. Maddedeki TÜM teknolojileri, sayıları ve görevleri koru — kısaltmak için
   bilgi atma. exp ve idx köşeli parantezdeki numaralar. Zaten iyi olan maddeyi listeye EKLEME. En fazla 8 madde."""
-    data = _chat_json(system, user, "cv_improve", _IMPROVE_SCHEMA, temperature=0.3, model=model)
+    data = _chat_json(system, user, "cv_improve", _IMPROVE_SCHEMA, temperature=0.3, model=model or fast_model())
     out = {"accepted": [], "rejected": []}
 
     def judge(where, old, new):

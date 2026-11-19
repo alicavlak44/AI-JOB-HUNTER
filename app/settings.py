@@ -24,6 +24,9 @@ CV_PATH = os.path.join(DOCS_DIR, "Cv.pdf") if os.path.exists(os.path.join(DOCS_D
 
 LM_STUDIO_URL = os.getenv("LM_STUDIO_URL", "http://127.0.0.1:1234/v1")
 LM_MODEL = os.getenv("LM_MODEL", "qwen/qwen3.5-9b")
+# Etkileşimli ekranlar (CV Koçu, Mülakat Provası) için hızlı model; boşsa LM_MODEL kullanılır.
+# İlan analizi gibi arka plan işleri kalite için LM_MODEL ile çalışır.
+LM_FAST_MODEL = os.getenv("LM_FAST_MODEL", "")
 LM_TIMEOUT = float(os.getenv("LM_TIMEOUT", "300"))
 # Düşünen modeller (Qwen3.5 vb.) için: "none" düşünmeyi kapatır (çok daha hızlı). Boş bırakılırsa gönderilmez.
 LM_REASONING_EFFORT = os.getenv("LM_REASONING_EFFORT", "none")

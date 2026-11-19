@@ -28,7 +28,7 @@ def _field_fit_text():
     return "\n".join(f"    {k} = {v}" for k, v in labels.items())
 from app.logger import get_logger
 from app.settings import (
-    LM_STUDIO_URL, LM_MODEL, LM_TIMEOUT, LM_REASONING_EFFORT,
+    LM_STUDIO_URL, LM_MODEL, LM_FAST_MODEL, LM_TIMEOUT, LM_REASONING_EFFORT,
     CV_MAX_CHARS, JOB_DESC_MAX_CHARS,
 )
 
@@ -41,6 +41,11 @@ class AIError(RuntimeError):
 
 def _client():
     return OpenAI(base_url=LM_STUDIO_URL, api_key="lm-studio", timeout=LM_TIMEOUT, max_retries=1)
+
+
+def fast_model():
+    """Etkileşimli ekranlar için model: LM_FAST_MODEL ayarlıysa o, değilse ana model."""
+    return LM_FAST_MODEL or LM_MODEL
 
 
 def check_lm_studio():

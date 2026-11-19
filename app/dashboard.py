@@ -13,6 +13,7 @@ import streamlit as st  # noqa: E402
 from app import context  # noqa: E402
 from app.ui.bulk import page_bulk  # noqa: E402
 from app.ui.cv_page import page_cv  # noqa: E402
+from app.ui.interview_page import page_interview  # noqa: E402
 from app.ui.home import page_home  # noqa: E402
 from app.ui.jobs import page_jobs  # noqa: E402
 from app.ui.login import login_screen, user_menu  # noqa: E402
@@ -53,12 +54,13 @@ PAGES = {
     "success": st.Page(page_success, title="Başarı ve Öneriler", icon=":material/insights:", url_path="basari"),
     "settings": st.Page(page_settings, title="Profil ve Ayarlar", icon=":material/settings:", url_path="ayarlar"),
     "cv": st.Page(page_cv, title="CV Stüdyosu", icon=":material/description:", url_path="cv-studyosu"),
+    "interview": st.Page(page_interview, title="Mülakat Provası", icon=":material/record_voice_over:", url_path="mulakat"),
 }
 st.session_state["_pages"] = PAGES  # sayfalar arası bağlantılar için
 
 nav = st.navigation({
     "İş Ara": [PAGES["home"], PAGES["jobs"], PAGES["bulk"], PAGES["network"], PAGES["success"], PAGES["settings"]],
-    "CV Stüdyosu": [PAGES["cv"]],
+    "CV ve Mülakat": [PAGES["cv"], PAGES["interview"]],
 }, position="top")
 
 user_menu(PAGES)

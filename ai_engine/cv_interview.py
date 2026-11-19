@@ -144,7 +144,7 @@ _Q_SCHEMA = {
 
 def ai_questions(profile, original="", target_title="", job_text="", previous=(), model=None):
     """Yapay zekâ CV'yi bir İK uzmanı gözüyle okur ve CV'yi güçlendirecek EKSİK bilgileri sorar (bilgi üretmez)."""
-    from ai_engine.brain import _chat_json
+    from ai_engine.brain import _chat_json, fast_model
     system = ("Sen Türkiye'de çalışan kıdemli bir İK uzmanı ve kariyer koçusun. Adayın CV'sini okuyup, CV'yi "
               "güçlendirmek için ADAYA SORULAR soracaksın. Asla bilgi uydurma, cevap önerme; sadece soru sor. "
               "Sorular kısa, tek konulu, samimi ve Türkçe olsun. Sadece istenen JSON'u döndür.")
@@ -181,7 +181,7 @@ KÖTÜ ÖRNEK: "Kesintiyi nasıl tespit ettiniz ve kaç dakikada çözdünüz?" 
 section: hangi bölümü güncelleyeceği — headline, summary, skills, certificates, languages, education, extras
 veya bir deneyim için "exp:N" (N = DENEYİM numarası). why: bu sorunun CV'ye katkısı (tek cümle).
 example: adayın cevabına örnek biçim (kısa)."""
-    data = _chat_json(system, user, "cv_questions", _Q_SCHEMA, temperature=0.4, model=model,
+    data = _chat_json(system, user, "cv_questions", _Q_SCHEMA, temperature=0.4, model=model or fast_model(),
                       timeout=AI_TIMEOUT, max_tokens=1200)
     out, n_exp = [], len(profile.get("experience", []))  # noqa: E501
     for k, q in enumerate(data.get("questions", [])):
@@ -424,7 +424,7 @@ def propose_edits(profile, original, qa, use_ai=True, model=None):
 
 
 def _ai_edits(profile, rest, model=None):
-    from ai_engine.brain import _chat_json
+    from ai_engine.brain import _chat_json, fast_model
     system = ("Sen kıdemli bir Türk İK uzmanı ve CV editörüsün. Adayın SORULARA VERDİĞİ CEVAPLARI CV'ye profesyonel "
               "dille işleyeceksin. SADECE CV'deki ve cevaplardaki bilgileri kullan; yeni sayı, beceri, şirket, unvan "
               "UYDURMA. Mevcut bir maddeyi yeniden yazıyorsan oradaki hiçbir teknolojiyi, sayıyı ve görevi silme. "
@@ -445,7 +445,7 @@ GÖREV: Her cevabı CV'ye işle. Her düzenleme için:
 - answer: hangi cevaptan geldiği (köşeli parantezdeki numara).
 Cevap bir maddeyi sayıyla güçlendiriyorsa o maddeyi (exp:N:M) yeniden yaz; yeni bir görevse exp:N:+ kullan.
 Boş, "yok", "bilmiyorum" gibi cevaplar için düzenleme ÜRETME."""
-    data = _chat_json(system, user, "cv_answer_edits", _EDIT_SCHEMA, temperature=0.2, model=model,
+    data = _chat_json(system, user, "cv_answer_edits", _EDIT_SCHEMA, temperature=0.2, model=model or fast_model(),
                       timeout=AI_TIMEOUT, max_tokens=1500)
     return [dict(e) for e in data.get("edits", [])]
 
