@@ -20,6 +20,7 @@ from app.netbot_limits import LIMITS, WORK_HOURS  # noqa: E402  (app.settings'te
 
 for _k, _v in LIMITS.items():
     os.environ.setdefault(_k, _v)
+os.environ.setdefault("KO_HEADLESS", "1")  # arka planda pencere açmadan sessiz çalışır
 
 from app import context, guard, netbot  # noqa: E402
 

@@ -138,5 +138,24 @@ class InterviewSessionLoadTests(unittest.TestCase):
         self.assertEqual(loaded["results"][0]["answer"], "VLAN")
 
 
+class HeadlessBackgroundTests(unittest.TestCase):
+    def test_is_headless_follows_env_and_override(self):
+        with mock.patch.dict(os.environ, {"KO_HEADLESS": "1"}):
+            self.assertTrue(a._is_headless())
+            self.assertFalse(a._is_headless(False))
+        with mock.patch.dict(os.environ, {"KO_HEADLESS": "0"}):
+            self.assertFalse(a._is_headless())
+            self.assertTrue(a._is_headless(True))
+
+    def test_wait_for_login_does_not_block_in_headless(self):
+        fake_ctx = mock.MagicMock()
+        fake_page = mock.MagicMock()
+        fake_page.url = "https://www.linkedin.com/login"
+        with mock.patch.dict(os.environ, {"KO_HEADLESS": "1"}), \
+                mock.patch.object(a, "_logged_in", return_value=False):
+            self.assertFalse(a._wait_for_login(fake_ctx, fake_page, "LinkedIn", timeout_s=300))
+            fake_page.wait_for_timeout.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -17,6 +17,7 @@ import time
 from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+os.environ.setdefault("KO_HEADLESS", "1")  # arka planda pencere açmadan sessiz çalışır
 
 from app import account, campaign, context, guard, jobbot  # noqa: E402
 from app.settings import STATUS_ANALYZED  # noqa: E402

@@ -93,6 +93,7 @@ def start(slug, include_kariyernet=True, auto_cv=True, auto_sync=True):
     env = {
         **os.environ,
         "KO_USER": slug,
+        "KO_HEADLESS": "1",
         "PYTHONUNBUFFERED": "1",
         "JOBBOT_KARIYERNET": "1" if include_kariyernet else "0",
         "JOBBOT_AUTO_CV": "1" if auto_cv else "0",

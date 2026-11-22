@@ -61,11 +61,23 @@ def _profile_lock(profile_dir, wait=None):
             fh.close()
 
 
+def _is_headless(headless=None):
+    """Arka plan botlarında (KO_HEADLESS=1) tarayıcı pencere açmadan sessiz çalışır."""
+    return (os.environ.get("KO_HEADLESS", "0") == "1") if headless is None else bool(headless)
+
+
 @contextmanager
-def _browser():
-    """Kalıcı profil ile görünür Chrome açar; her durumda kapatır. Profil başka süreçte açıksa sırasını bekler."""
+def _browser(headless=None):
+    """Kalıcı profil ile Chrome açar; her durumda kapatır. Profil başka süreçte açıksa sırasını bekler.
+    headless=True (veya KO_HEADLESS=1): arka planda pencere açmadan çalışır, kullanıcının ekranını bölmez."""
+    hl = _is_headless(headless)
+    args = [a for a in BROWSER_ARGS if a != "--start-maximized"] if hl else list(BROWSER_ARGS)
+    opts = dict(user_data_dir=ctx.chrome_profile(), headless=hl, args=args)
+    if hl:
+        opts["viewport"] = {"width": 1366, "height": 900}
+    else:
+        opts["no_viewport"] = True
     with _profile_lock(ctx.chrome_profile()), sync_playwright() as p:
-        opts = dict(user_data_dir=ctx.chrome_profile(), headless=False, args=BROWSER_ARGS, no_viewport=True)
         try:
             context = p.chromium.launch_persistent_context(channel="chrome", **opts)
         except PlaywrightError as e:
@@ -163,6 +175,9 @@ def _wait_for_login(context, page, platform, timeout_s=300):
     """Giriş yapılmamışsa giriş sayfasını açar ve kullanıcı giriş yapana kadar bekler. Giriş varsa True."""
     if _logged_in(context, platform) and not any(h in page.url for h in LOGIN_URL_HINTS):
         return True
+    if _is_headless():  # arka plan (penceresiz) modda kullanıcı giriş yapamaz → hemen dur ve panelde bildir
+        log.warning("%s oturumu kapalı (arka plan modu); panelden yeniden giriş gerekli", platform)
+        return False
     if not any(h in page.url for h in LOGIN_URL_HINTS):
         page.goto(LOGIN_URLS[platform])
     log.info("%s girişi bekleniyor (açılan pencerede giriş yapın, en fazla %d sn)", platform, timeout_s)
@@ -183,7 +198,7 @@ def save_login_session(platform):
     """Bot profilinde platforma bir kez giriş yaptırır. Giriş algılanınca pencere kendiliğinden kapanır."""
     plat = "LinkedIn" if platform.lower().startswith("linkedin") else "Kariyer.net"
     try:
-        with _browser() as (context, page):
+        with _browser(headless=False) as (context, page):
             page.goto(LOGIN_URLS[plat])
             ok = _wait_for_login(context, page, plat)
             if ok:
@@ -646,7 +661,7 @@ def run_application_bot(job_id, job_url, mode="yari", cv_path=None, wait_user_ms
         log.info("İlan #%s başvurusu koruma nedeniyle ertelendi: %s", job_id, decision.reason)
         return None, "🛡️ " + decision.reason
     try:
-        with _browser() as (context, page):
+        with _browser(headless=False) as (context, page):
             page.goto(job_url)
             page.wait_for_timeout(int(guard.random.uniform(3000, 6000)))
 
@@ -786,7 +801,7 @@ def platform_of(url):
 def open_linkedin_hr_hunter(hr_search_url):
     """Şirketin İK uzmanlarını aramak için LinkedIn'i açar (bağlantı isteği kullanıcı tarafından gönderilir)."""
     try:
-        with _browser() as (context, page):
+        with _browser(headless=False) as (context, page):
             page.goto(hr_search_url)
             _wait_until_closed(context, page, 300_000)
         return True

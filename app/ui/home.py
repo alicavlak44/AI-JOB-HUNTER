@@ -26,6 +26,78 @@ def _connections():
                 st.rerun()
 
 
+@st.fragment(run_every="15s")
+def _live_center():
+    """Arka plan botlarının canlı durumu ve son hareketleri (sayfa yenilemeden 15 sn'de bir güncellenir)."""
+    import pandas as pd
+    from app import jobbot, netbot
+    from app.ui.jobbot_card import STATE_STYLE as JB_STYLE
+    from app.ui.netbot_card import STATE_STYLE as NB_STYLE
+
+    slug = context.current()
+    nb = netbot.status(slug)
+    jb = jobbot.status(slug)
+    opps = jobbot.ready_opportunities(get_all_jobs())
+    n_col, n_lbl = NB_STYLE.get(nb["state"], ("gray", nb["state"]))
+    j_col, j_lbl = JB_STYLE.get(jb["state"], ("gray", jb["state"]))
+
+    with st.container(border=True):
+        st.markdown("#### Arka Plan Otomasyonu — Canlı Durum  `15 sn'de bir güncellenir · penceresiz çalışır`")
+        left, right = st.columns(2)
+        with left:
+            st.markdown(f"**LinkedIn Ağ Botu**  :{n_col}[● {n_lbl}]")
+            st.caption(f"Son 24 saat: **{nb['today']}/{netbot.DAILY}** · Son 7 gün: **{nb['week']}/{netbot.WEEKLY}** · Toplam: **{nb['total']}**")
+            if nb["detail"]:
+                st.caption(f"Son işlem ({nb['updated'][11:16]}): {nb['detail']}")
+            if nb["state"] == "giriş gerekli":
+                st.error("LinkedIn oturumu kapalı — yukarıdan 'Yeniden bağlan' yapın.")
+            b1, b2, b3 = st.columns([1, 1, 1.3])
+            if b1.button("Başlat", key="home_nb_start", disabled=nb["running"], width="stretch", type="primary"):
+                _, msg = netbot.start(slug)
+                st.toast(msg)
+                st.rerun()
+            if b2.button("Durdur", key="home_nb_stop", disabled=not nb["running"], width="stretch"):
+                _, msg = netbot.stop(slug)
+                st.toast(msg)
+                st.rerun()
+            if "network" in st.session_state.get("_pages", {}):
+                b3.page_link(st.session_state["_pages"]["network"], label="Detaylar", icon=":material/tune:")
+
+        with right:
+            st.markdown(f"**Otomatik İlan Avcısı**  :{j_col}[● {j_lbl}]")
+            nxt = f" · Sonraki tur: **{jb['next_run']}**" if jb["running"] and jb["next_run"] else ""
+            st.caption(f"Bulunan: **{jb['found_total']}** · Analiz: **{jb['analyzed_total']}** · %{jobbot.PREP_MIN_SCORE}+ hazır fırsat: **{len(opps)}**{nxt}")
+            if jb["detail"]:
+                st.caption(f"Son işlem ({jb['updated'][11:16]}): {jb['detail']}")
+            if jb["state"] == "lm kapalı":
+                st.warning("LM Studio kapalı: tarama sürüyor, otomatik analiz için LM Studio sunucusunu açın.")
+            b1, b2, b3 = st.columns([1, 1, 1.3])
+            if b1.button("Başlat", key="home_jb_start", disabled=jb["running"], width="stretch", type="primary"):
+                _, msg = jobbot.start(slug)
+                st.toast(msg)
+                st.rerun()
+            if b2.button("Durdur", key="home_jb_stop", disabled=not jb["running"], width="stretch"):
+                _, msg = jobbot.stop(slug)
+                st.toast(msg)
+                st.rerun()
+            if "bulk" in st.session_state.get("_pages", {}):
+                b3.page_link(st.session_state["_pages"]["bulk"], label="Fırsatlar", icon=":material/smart_toy:")
+
+        t1, t2 = st.tabs(["📡 Canlı hareket akışı", "🤝 Son gönderilen davetler"])
+        with t1:
+            nb_logs = [f"[Ağ Botu] {l}" for l in netbot.recent_log(slug, 6)]
+            jb_logs = [f"[İlan Avcısı] {l}" for l in jobbot.recent_log(slug, 6)]
+            merged = sorted(nb_logs + jb_logs, key=lambda s: s.split("] ", 1)[-1][:11], reverse=True)[:10]
+            st.code("\n".join(merged) if merged else "Henüz arka plan kaydı yok.", language=None)
+        with t2:
+            inv_rows = netbot.recent_invites(8)
+            if inv_rows:
+                st.dataframe(pd.DataFrame(inv_rows), hide_index=True, width="stretch",
+                             column_config={"Profil": st.column_config.LinkColumn("Profil", display_text="Aç")})
+            else:
+                st.caption("Henüz davet kaydı yok.")
+
+
 def page_home():
     header("Bugün ne yapıyoruz?", "İlan bul → analiz et → isabetli başvur → İK ağını büyüt. Üst menüden ilerleyin; sağ üstte kullanıcı menünüz var.")
     show_flash("home")
@@ -59,24 +131,7 @@ def page_home():
     for plat, g in (("LinkedIn", g_li), ("Kariyer.net", g_kn)):
         if g["engel"]:
             st.error(f"{plat} bot işlemleri durduruldu: {g['engel']}")
-    from app import jobbot, netbot
-    from app.ui.jobbot_card import STATE_STYLE as JB_STYLE
-    from app.ui.netbot_card import STATE_STYLE
-    nb = netbot.status(context.current())
-    color, label = STATE_STYLE.get(nb["state"], ("gray", nb["state"]))
-    b1, b2 = st.columns([3, 1])
-    b1.markdown(f"**LinkedIn ağ botu** :{color}[● {label}] · son 24 saatte {nb['today']}, son 7 günde {nb['week']}/{netbot.WEEKLY} davet")
-    if "network" in st.session_state.get("_pages", {}):
-        b2.page_link(st.session_state["_pages"]["network"], label="Ağ botunu yönet", icon=":material/tune:")
-
-    jb = jobbot.status(context.current())
-    jcolor, jlabel = JB_STYLE.get(jb["state"], ("gray", jb["state"]))
-    opps = jobbot.ready_opportunities(jobs)
-    j1, j2 = st.columns([3, 1])
-    j1.markdown(f"**Otomatik ilan avcısı** :{jcolor}[● {jlabel}] · %{jobbot.PREP_MIN_SCORE}+ hazır fırsat: **{len(opps)}**"
-                + (f" · sonraki tarama: {jb['next_run']}" if jb["running"] and jb["next_run"] else ""))
-    if "bulk" in st.session_state.get("_pages", {}):
-        j2.page_link(st.session_state["_pages"]["bulk"], label="Avcıyı yönet", icon=":material/smart_toy:")
+    _live_center()
 
     due_fu = followup.due_followups(jobs)
     if due_fu and "success" in st.session_state.get("_pages", {}):
