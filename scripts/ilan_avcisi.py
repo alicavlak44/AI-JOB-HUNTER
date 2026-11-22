@@ -96,11 +96,12 @@ def run_cycle(cycle_idx, totals):
             break
         log(f"LinkedIn taranıyor: {pos} ({city})", state="çalışıyor")
         st = scrape_linkedin_jobs(pos, city)
-        added = int(st.get("eklenen", 0))
+        added = int(st.get("added", 0))
         new_found += added
-        if st.get("engel"):
-            log("LinkedIn uyarısı:", st["engel"])
-            break
+        if st.get("error"):
+            log("LinkedIn uyarısı:", st["error"])
+            if "🛡️" in st["error"]:
+                break
 
     if USE_KARIYERNET and session_status().get("Kariyer.net") and guard.check("Kariyer.net", guard.SCRAPE).ok:
         # Her döngüde en fazla 3 pozisyon (Chrome kilidini ve limitleri yormasın)
@@ -111,13 +112,17 @@ def run_cycle(cycle_idx, totals):
                 break
             log(f"Kariyer.net taranıyor: {pos} ({city})", state="çalışıyor")
             st = scrape_kariyernet_browser(pos, city)
-            new_found += int(st.get("eklenen", 0))
-            if st.get("engel"):
-                log("Kariyer.net uyarısı:", st["engel"])
-                break
+            new_found += int(st.get("added", 0))
+            if st.get("error"):
+                log("Kariyer.net uyarısı:", st["error"])
+                if "🛡️" in st["error"]:
+                    break
 
     totals["found_total"] += new_found
     log(f"Tarama tamamlandı: {new_found} yeni ilan eklendi", **totals)
+
+    # 1.5) Detayı eksik ilanların tam metnini çek (başvuru öncesi panelde okunabilsin)
+    _fetch_missing_details(limit=15)
 
     # 2) Hızlı yapay zekâ analizi ve %75+ fırsat hazırlığı (yalnızca LM Studio açıksa)
     _analyze_and_prepare(totals)
@@ -127,6 +132,34 @@ def run_cycle(cycle_idx, totals):
         log("Günlük LinkedIn hesap senkronu yapılıyor...", state="çalışıyor")
         r = sync_linkedin_account()
         log("LinkedIn senkron:", r.get("summary") or r.get("error") or "tamamlandı")
+
+
+def _fetch_missing_details(limit=15):
+    """Detay metni eksik (200 karakter altı) ilanların tam açıklamasını sessizce çeker ve kaydeder."""
+    from browser.automator import fetch_job_description_browser
+    from browser.scraper import fetch_job_description
+    from database.db_manager import update_job_details
+
+    jobs = get_all_jobs()
+    if jobs.empty:
+        return 0
+    missing = jobs[jobs["details"].fillna("").str.len() < 200].head(limit)
+    fetched = 0
+    for _, row in missing.iterrows():
+        url = row.get("url") or ""
+        if not url:
+            continue
+        source = row.get("Kaynak") or ""
+        desc = fetch_job_description(url) if source != "Kariyer.net" else ""
+        if len(desc) < 200 and source == "Kariyer.net":
+            desc = fetch_job_description_browser(url)
+        if desc and len(desc) >= 80:
+            update_job_details(int(row["id"]), desc)
+            fetched += 1
+            log(f"İlan detayı çekildi ({fetched}/{len(missing)}): {row['Şirket']} — {row['Pozisyon']}", state="çalışıyor")
+    if fetched:
+        log(f"{fetched} ilanın tam detayı kaydedildi")
+    return fetched
 
 
 def _analyze_and_prepare(totals):

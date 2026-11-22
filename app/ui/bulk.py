@@ -52,6 +52,24 @@ def page_bulk():
                                                "Puan": st.column_config.ProgressColumn("Puan", min_value=0, max_value=100, format="%d")})
         approved = edited.loc[edited["Onay"], "id"].tolist()
 
+        with st.expander("📃 Başvuru öncesi ilan detayını incele"):
+            labels = {int(r.id): f"#{r.id} · %{int(r.puan)} · {r.Şirket} — {r.Pozisyon}" for r in cand.itertuples()}
+            inspect_id = st.selectbox("İncelemek istediğiniz ilan", list(labels), format_func=labels.get, key="bulk_inspect")
+            irow = jobs[jobs["id"] == inspect_id].iloc[0]
+            ic1, ic2 = st.columns([2, 1])
+            with ic1:
+                st.markdown("**İlan metni**")
+                st.text_area("İlan metni", value=(irow.get("details") or "(İlan metni henüz çekilmedi)"),
+                             height=260, label_visibility="collapsed", key=f"bulk_det_{inspect_id}")
+            with ic2:
+                st.markdown("**Özet değerlendirme**")
+                if isinstance(irow.get("matching_skills"), str) and irow["matching_skills"].strip():
+                    st.markdown(f"✅ **CV'de olan:** {irow['matching_skills']}")
+                if isinstance(irow.get("missing_skills"), str) and irow["missing_skills"].strip():
+                    st.markdown(f"🧩 **Eksik:** {irow['missing_skills']}")
+                if isinstance(irow.get("evaluation"), str) and irow["evaluation"].strip():
+                    st.write(irow["evaluation"])
+
         step("3️⃣ Başvur")
         o1, o2 = st.columns(2)
         invite = o1.checkbox("Her şirketin İK yöneticisine de davet gönder", value=True,

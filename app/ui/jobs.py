@@ -10,10 +10,11 @@ from app import campaign, context, followup
 from app.logger import get_logger
 from app.settings import STATUS_APPLIED_VERIFIED
 from app.ui.common import header, show_flash, set_flash, msg_kind, txt
-from browser.automator import (scrape_kariyernet_browser, run_application_bot, open_linkedin_hr_hunter, choose_cv)
-from browser.scraper import scrape_linkedin_jobs, build_hr_search_url, stats_message
+from browser.automator import (scrape_kariyernet_browser, run_application_bot, open_linkedin_hr_hunter,
+                               choose_cv, fetch_job_description_browser)
+from browser.scraper import scrape_linkedin_jobs, build_hr_search_url, stats_message, fetch_job_description
 from database.db_manager import (get_all_jobs, delete_single_job, delete_unprocessed_jobs,
-                                 set_tailored_cv, update_job_tracking)
+                                 set_tailored_cv, update_job_details, update_job_tracking)
 
 log = get_logger("ui.jobs")
 
@@ -85,8 +86,12 @@ def _job_detail(jobs):
         st.caption(f"ℹ️ {row['last_error']}")
 
     if not (txt(row["evaluation"]) or txt(row["cover_letter"])):
-        st.info("Bu ilan henüz analiz edilmedi. '🧠 Analiz et' ile uyum puanını görün.")
-        _tracking_panel(int(sel), row)
+        st.info("Bu ilan henüz analiz edilmedi. '🧠 Analiz et' ile uyum puanını görün; aşağıdan ilan metnini şimdiden inceleyebilirsiniz.")
+        t_det, t_trk = st.tabs(["📃 İlan detayı", "📋 Süreç takibi"])
+        with t_det:
+            _details_panel(int(sel), row)
+        with t_trk:
+            _tracking_panel(int(sel), row)
         return
 
     m1, m2 = st.columns([1, 3])
@@ -100,7 +105,9 @@ def _job_detail(jobs):
         if txt(row["missing_skills"]):
             st.markdown(f"🧩 **Eksik:** {row['missing_skills']}")
 
-    t1, t2, t3, t4, t5 = st.tabs(["📊 Değerlendirme", "✍️ Ön yazı", "🤝 İK notu", "📄 İlana özel CV", "📋 Süreç takibi"])
+    t0, t1, t2, t3, t4, t5 = st.tabs(["📃 İlan detayı", "📊 Değerlendirme", "✍️ Ön yazı", "🤝 İK notu", "📄 İlana özel CV", "📋 Süreç takibi"])
+    with t0:
+        _details_panel(int(sel), row)
     with t1:
         st.write(row["evaluation"])
         if txt(row["match_facts"]):
@@ -145,6 +152,29 @@ def _job_detail(jobs):
             st.caption(f"📎 Başvuruda yüklenecek: **{os.path.basename(apply_cv)}**")
     with t5:
         _tracking_panel(int(sel), row)
+
+
+def _details_panel(job_id, row):
+    det = txt(row.get("details"))
+    c1, c2 = st.columns([3, 1])
+    c1.caption(f"Kaynak: **{row['Kaynak']}** · Şehir: **{row['Şehir']}** · "
+               + (f"{len(det)} karakter detay kayıtlı" if det else "İlan detayı henüz çekilmedi"))
+    if c2.button("🔄 Detayı çek", key=f"det_fetch_{job_id}", width="stretch"):
+        with st.spinner("İlan metni çekiliyor..."):
+            url = row.get("url") or ""
+            fetched = fetch_job_description(url) if row["Kaynak"] != "Kariyer.net" else ""
+            if len(fetched) < 200 and row["Kaynak"] == "Kariyer.net":
+                fetched = fetch_job_description_browser(url)
+            if fetched and len(fetched) >= 80:
+                update_job_details(job_id, fetched)
+                set_flash("detail", "success", f"✅ İlan detayı çekildi ({len(fetched)} karakter).")
+            else:
+                set_flash("detail", "warning", "⚠️ İlan detayı alınamadı; ilan kapanmış veya koruma sınırında olabilir.")
+        st.rerun()
+    if det:
+        st.text_area("İlan metni", value=det, height=340, label_visibility="collapsed", key=f"det_txt_{job_id}")
+    else:
+        st.info("Bu ilanın tam metni henüz çekilmedi. Yukarıdaki '🔄 Detayı çek' düğmesiyle ya da arka plandaki İlan Avcısı ile otomatik çekilir.")
 
 
 def _tracking_panel(job_id, row):
@@ -197,7 +227,9 @@ def page_jobs():
         mask = (view["Şirket"].fillna("").str.lower().str.contains(q_low, regex=False) |
                 view["Pozisyon"].fillna("").str.lower().str.contains(q_low, regex=False))
         view = view[mask]
-    st.dataframe(view[["id", "Kaynak", "Pozisyon", "Şirket", "Şehir", "ATS Uyum", "Durum", "url"]], width="stretch",
+    view = view.copy()
+    view["Detay"] = view["details"].fillna("").str.len().map(lambda n: "✓" if n >= 200 else "—")
+    st.dataframe(view[["id", "Kaynak", "Pozisyon", "Şirket", "Şehir", "Detay", "ATS Uyum", "Durum", "url"]], width="stretch",
                  hide_index=True, height=300, column_config={"url": st.column_config.LinkColumn("İlan", display_text="Aç")})
 
     st.subheader("Seçili ilan")
