@@ -95,6 +95,8 @@ def start(slug, include_kariyernet=True, auto_cv=True, auto_sync=True):
         "KO_USER": slug,
         "KO_HEADLESS": "1",
         "PYTHONUNBUFFERED": "1",
+        "MAX_HOURLY_SCRAPES": "30",
+        "MAX_DAILY_SCRAPES": "60",
         "JOBBOT_KARIYERNET": "1" if include_kariyernet else "0",
         "JOBBOT_AUTO_CV": "1" if auto_cv else "0",
         "JOBBOT_AUTO_SYNC": "1" if auto_sync else "0",

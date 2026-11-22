@@ -90,8 +90,9 @@ def run_cycle(cycle_idx, totals):
     # 1) İlan tarama (LinkedIn hızlı + isteğe bağlı Kariyer.net)
     new_found = 0
     for pos in targets:
-        if not guard.check("LinkedIn", guard.SCRAPE).ok:
-            log("LinkedIn tarama sınırında; kalan pozisyonlar sonraki tura kaldı")
+        d = guard.wait_turn("LinkedIn", guard.SCRAPE, max_wait=25)
+        if not d.ok:
+            log(f"LinkedIn tarama sınırında ({d.reason}); kalan pozisyonlar sonraki tura kaldı")
             break
         log(f"LinkedIn taranıyor: {pos} ({city})", state="çalışıyor")
         st = scrape_linkedin_jobs(pos, city)
@@ -100,13 +101,13 @@ def run_cycle(cycle_idx, totals):
         if st.get("engel"):
             log("LinkedIn uyarısı:", st["engel"])
             break
-        time.sleep(2)
 
     if USE_KARIYERNET and session_status().get("Kariyer.net") and guard.check("Kariyer.net", guard.SCRAPE).ok:
-        # Her döngüde en fazla 2 pozisyon (Chrome kilidini ve limitleri yormasın)
-        kn_batch = [targets[(cycle_idx * 2 + j) % len(targets)] for j in range(min(2, len(targets)))]
+        # Her döngüde en fazla 3 pozisyon (Chrome kilidini ve limitleri yormasın)
+        kn_batch = [targets[(cycle_idx * 3 + j) % len(targets)] for j in range(min(3, len(targets)))]
         for pos in kn_batch:
-            if not guard.check("Kariyer.net", guard.SCRAPE).ok:
+            d = guard.wait_turn("Kariyer.net", guard.SCRAPE, max_wait=25)
+            if not d.ok:
                 break
             log(f"Kariyer.net taranıyor: {pos} ({city})", state="çalışıyor")
             st = scrape_kariyernet_browser(pos, city)
@@ -118,70 +119,99 @@ def run_cycle(cycle_idx, totals):
     totals["found_total"] += new_found
     log(f"Tarama tamamlandı: {new_found} yeni ilan eklendi", **totals)
 
-    # 2) Hızlı yapay zekâ analizi (yalnızca LM Studio açıksa)
-    lm_ok, lm_msg = check_lm_studio()
-    if not lm_ok:
-        log(f"LM Studio hazır değil ({lm_msg}); analiz bu turda atlandı", state="lm kapalı")
-    else:
-        jobs = get_all_jobs()
-        pending = campaign.unanalyzed_jobs(jobs).head(jobbot.MAX_ANALYZE_PER_CYCLE)
-        analyzed_now = 0
-        for _, row in pending.iterrows():
-            log(f"Analiz ediliyor: {row['Şirket']} — {row['Pozisyon']}", state="çalışıyor")
-            ok, msg = campaign.analyze_job(row, brief=True)
-            if ok:
-                analyzed_now += 1
-                totals["analyzed_total"] += 1
-            else:
-                log(f"Analiz atlandı ({row['Şirket']}): {msg}")
-                if "LM Studio" in msg or "ulaşılamadı" in msg:
-                    break
-        if analyzed_now:
-            log(f"{analyzed_now} ilan analiz edildi", **totals)
+    # 2) Hızlı yapay zekâ analizi ve %75+ fırsat hazırlığı (yalnızca LM Studio açıksa)
+    _analyze_and_prepare(totals)
 
-        # 3) %75+ uyumlu fırsatlar için tam analiz (ön yazı + İK notu) ve özel CV hazırlığı
-        jobs = get_all_jobs()
-        high = jobs[jobs["Durum"] == STATUS_ANALYZED].copy()
-        if not high.empty:
-            high["_p"] = high["ATS Uyum"].map(parse_score)
-            high = high[high["_p"].notna() & (high["_p"] >= jobbot.PREP_MIN_SCORE)].sort_values("_p", ascending=False)
-            prepared_names = []
-            for _, row in high.iterrows():
-                if len(prepared_names) >= jobbot.MAX_PREP_PER_CYCLE:
-                    break
-                job_id = int(row["id"])
-                has_cl = isinstance(row.get("cover_letter"), str) and len(row["cover_letter"].strip()) > 50
-                cv_path = row.get("tailored_cv_path")
-                has_cv = isinstance(cv_path, str) and bool(cv_path.strip()) and os.path.exists(cv_path)
-                if has_cl and (not AUTO_CV or has_cv):
-                    continue
-                did_work = False
-                if not has_cl:
-                    log(f"Fırsat hazırlanıyor (%{int(row['_p'])}): {row['Şirket']} — ön yazı ve İK notu", state="çalışıyor")
-                    ok, _ = campaign.analyze_job(row, brief=False)
-                    did_work = did_work or ok
-                if AUTO_CV and not has_cv:
-                    try:
-                        log(f"Özel CV üretiliyor: {row['Şirket']} — {row['Pozisyon']}", state="çalışıyor")
-                        res = build_tailored_cv(job_id, row["Pozisyon"], row["Şirket"], row["details"] or "")
-                        set_tailored_cv(job_id, res["path"])
-                        did_work = True
-                    except Exception as e:
-                        log(f"Özel CV üretilemedi (#{job_id}): {e}")
-                if did_work:
-                    totals["prepared_total"] += 1
-                    prepared_names.append(f"{row['Şirket']} (%{int(row['_p'])})")
-            if prepared_names:
-                summary = ", ".join(prepared_names)
-                log(f"Başvuruya hazır fırsatlar: {summary}", **totals)
-                jobbot.notify_mac("Kariyer Otonomu — Yeni Fırsat Hazır",
-                                  f"Ön yazı ve özel CV hazır: {summary}")
-
-    # 4) Günde 1 kez LinkedIn hesap senkronu
+    # 3) Günde 1 kez LinkedIn hesap senkronu
     if AUTO_SYNC and session_status().get("LinkedIn") and _needs_daily_sync() and guard.check("LinkedIn", guard.SYNC).ok:
         log("Günlük LinkedIn hesap senkronu yapılıyor...", state="çalışıyor")
         r = sync_linkedin_account()
         log("LinkedIn senkron:", r.get("summary") or r.get("error") or "tamamlandı")
+
+
+def _analyze_and_prepare(totals):
+    """LM Studio açıksa bekleyen ilanları analiz eder ve %75+ fırsatları hazırlar. Açık değilse False döner."""
+    from ai_engine.brain import check_lm_studio
+    from ai_engine.cv_builder import build_tailored_cv
+
+    lm_ok, lm_msg = check_lm_studio()
+    if not lm_ok:
+        log(f"LM Studio hazır değil ({lm_msg}); analiz bekliyor", state="lm kapalı")
+        return False
+
+    jobs = get_all_jobs()
+    pending = campaign.unanalyzed_jobs(jobs).head(jobbot.MAX_ANALYZE_PER_CYCLE)
+    analyzed_now = 0
+    for _, row in pending.iterrows():
+        log(f"Analiz ediliyor: {row['Şirket']} — {row['Pozisyon']}", state="çalışıyor")
+        ok, msg = campaign.analyze_job(row, brief=True)
+        if ok:
+            analyzed_now += 1
+            totals["analyzed_total"] += 1
+        else:
+            log(f"Analiz atlandı ({row['Şirket']}): {msg}")
+            if "LM Studio" in msg or "ulaşılamadı" in msg:
+                break
+    if analyzed_now:
+        log(f"{analyzed_now} ilan analiz edildi", **totals)
+
+    jobs = get_all_jobs()
+    high = jobs[jobs["Durum"] == STATUS_ANALYZED].copy()
+    if not high.empty:
+        high["_p"] = high["ATS Uyum"].map(parse_score)
+        high = high[high["_p"].notna() & (high["_p"] >= jobbot.PREP_MIN_SCORE)].sort_values("_p", ascending=False)
+        prepared_names = []
+        for _, row in high.iterrows():
+            if len(prepared_names) >= jobbot.MAX_PREP_PER_CYCLE:
+                break
+            job_id = int(row["id"])
+            has_cl = isinstance(row.get("cover_letter"), str) and len(row["cover_letter"].strip()) > 50
+            cv_path = row.get("tailored_cv_path")
+            has_cv = isinstance(cv_path, str) and bool(cv_path.strip()) and os.path.exists(cv_path)
+            if has_cl and (not AUTO_CV or has_cv):
+                continue
+            did_work = False
+            if not has_cl:
+                log(f"Fırsat hazırlanıyor (%{int(row['_p'])}): {row['Şirket']} — ön yazı ve İK notu", state="çalışıyor")
+                ok, _ = campaign.analyze_job(row, brief=False)
+                did_work = did_work or ok
+            if AUTO_CV and not has_cv:
+                try:
+                    log(f"Özel CV üretiliyor: {row['Şirket']} — {row['Pozisyon']}", state="çalışıyor")
+                    res = build_tailored_cv(job_id, row["Pozisyon"], row["Şirket"], row["details"] or "")
+                    set_tailored_cv(job_id, res["path"])
+                    did_work = True
+                except Exception as e:
+                    log(f"Özel CV üretilemedi (#{job_id}): {e}")
+            if did_work:
+                totals["prepared_total"] += 1
+                prepared_names.append(f"{row['Şirket']} (%{int(row['_p'])})")
+        if prepared_names:
+            summary = ", ".join(prepared_names)
+            log(f"Başvuruya hazır fırsatlar: {summary}", **totals)
+            jobbot.notify_mac("Kariyer Otonomu — Yeni Fırsat Hazır",
+                              f"Ön yazı ve özel CV hazır: {summary}")
+    return True
+
+
+def _nap_with_lm_watch(seconds, totals):
+    """Sonraki taramayı beklerken LM Studio açılırsa ve bekleyen ilan varsa hemen analiz eder."""
+    from ai_engine.brain import check_lm_studio
+
+    until = datetime.now() + timedelta(seconds=seconds)
+    last_lm_check = datetime.now()
+    while datetime.now() < until:
+        time.sleep(min(30, max(1, (until - datetime.now()).total_seconds())))
+        if (datetime.now() - last_lm_check).total_seconds() >= 90:
+            last_lm_check = datetime.now()
+            if not (START_H <= datetime.now().hour < END_H):
+                continue
+            pending = campaign.unanalyzed_jobs(get_all_jobs())
+            if not pending.empty and check_lm_studio()[0]:
+                log(f"LM Studio açıldı; bekleyen {len(pending)} ilandan analiz başlıyor...", state="çalışıyor")
+                _analyze_and_prepare(totals)
+                nxt = until.strftime("%d.%m %H:%M")
+                log(f"Analiz bitti; sonraki tarama {until:%H:%M}", state="beklemede", next_run=nxt, **totals)
 
 
 def _on_term(signum, frame):
@@ -211,7 +241,7 @@ def main():
             nxt = datetime.now() + timedelta(seconds=INTERVAL_SEC)
             log(f"Tur bitti; sonraki tarama {nxt:%H:%M}", state="beklemede",
                 next_run=nxt.strftime("%d.%m %H:%M"), **totals)
-            nap(INTERVAL_SEC)
+            _nap_with_lm_watch(INTERVAL_SEC, totals)
     finally:
         jobbot.write_state(SLUG, pid=None, state="durduruldu", **totals)
 
