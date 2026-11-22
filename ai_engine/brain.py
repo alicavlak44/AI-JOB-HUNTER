@@ -9,8 +9,8 @@ import re
 from datetime import datetime
 from functools import lru_cache
 
-from openai import (OpenAI, APIConnectionError, APITimeoutError,
-                    AuthenticationError, BadRequestError, RateLimitError)
+from openai import (OpenAI, APIConnectionError, APITimeoutError, APIStatusError,
+                    AuthenticationError, BadRequestError, NotFoundError, RateLimitError)
 from pypdf import PdfReader
 
 from ai_engine.cv_profile import build_profile
@@ -100,7 +100,7 @@ def ping_ai():
             "ping",
             {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"], "additionalProperties": False},
             timeout=30,
-            max_tokens=30,
+            max_tokens=256,
         )
         return True, f"{msg} · canlı JSON testi OK ({res})"
     except AIError as e:
@@ -183,6 +183,8 @@ def _chat_json(system, user, schema_name, schema, temperature=0.2, model=None, t
                                                  response_format={"type": "json_object"})
     except AuthenticationError as e:
         raise AIError(f"{cfg['label']} API anahtarı geçersiz veya yetkisiz.") from e
+    except NotFoundError as e:
+        raise AIError(f"Model bulunamadı veya kullanımdan kalktı ('{use_model}'): {str(e)[:220]}") from e
     except RateLimitError as e:
         raise AIError(f"{cfg['label']} hız/kota sınırına ulaşıldı; biraz sonra tekrar deneyin.") from e
     except APITimeoutError as e:
@@ -190,6 +192,8 @@ def _chat_json(system, user, schema_name, schema, temperature=0.2, model=None, t
     except APIConnectionError as e:
         hint = cfg["url"] if cfg["is_cloud"] else "LM Studio → Developer → Start server"
         raise AIError(f"{cfg['label']} sunucusuna ulaşılamadı ({hint}).") from e
+    except APIStatusError as e:
+        raise AIError(f"{cfg['label']} API hatası ({e.status_code}): {str(e)[:220]}") from e
 
     raw = res.choices[0].message.content or ""
     try:

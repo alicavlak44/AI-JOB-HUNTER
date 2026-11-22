@@ -23,7 +23,8 @@ class AIProviderConfigTests(unittest.TestCase):
             cfg = settings.save_ai_env("gemini", api_key="AIzaTestKey123", env_path=self.env_file)
         self.assertEqual(cfg["provider"], "gemini")
         self.assertEqual(cfg["url"], "https://generativelanguage.googleapis.com/v1beta/openai/")
-        self.assertEqual(cfg["model"], "gemini-2.5-flash")
+        self.assertEqual(cfg["model"], "gemini-3.5-flash")
+        self.assertEqual(cfg["fast_model"], "gemini-3.5-flash-lite")
         self.assertEqual(cfg["api_key"], "AIzaTestKey123")
         self.assertEqual(cfg["reasoning_effort"], "")  # bulutta 'none' gönderilmez
         self.assertTrue(cfg["is_cloud"])
@@ -49,12 +50,12 @@ class AIProviderConfigTests(unittest.TestCase):
         cfg = {**settings.AI_PROVIDERS["gemini"], "provider": "gemini", "api_key": "AIzaOk", "is_cloud": True,
                "reasoning_effort": ""}
         fake_client = mock.MagicMock()
-        fake_client.models.list.return_value.data = [SimpleNamespace(id="models/gemini-2.5-flash")]
+        fake_client.models.list.return_value.data = [SimpleNamespace(id="models/gemini-3.5-flash")]
         with mock.patch.object(brain, "_ai_cfg", return_value=cfg), \
                 mock.patch.object(brain, "_client", return_value=fake_client):
             ok, msg = brain.check_ai()
         self.assertTrue(ok)
-        self.assertIn("gemini-2.5-flash", msg)
+        self.assertIn("gemini-3.5-flash", msg)
 
     def test_chat_json_falls_back_to_json_object_on_400(self):
         cfg = {**settings.AI_PROVIDERS["gemini"], "provider": "gemini", "api_key": "AIzaOk", "is_cloud": True,

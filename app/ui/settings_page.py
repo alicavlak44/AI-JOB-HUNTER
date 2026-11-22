@@ -39,16 +39,18 @@ def _ai_motor_section():
         st.caption("Not: Bulut API seçildiğinde CV ve ilan metinleri seçtiğiniz API sağlayıcısına gönderilir.")
 
     c1, c2 = st.columns(2)
-    url = c1.text_input("API adresi (Base URL)", value=cfg["url"] if same else preset["url"], key=f"ai_url_{picked}")
-    model = c2.text_input("Ana model", value=cfg["model"] if same else preset["model"], key=f"ai_mod_{picked}")
+    url = c1.text_input("API adresi (Base URL)", value=cfg["url"] if same else preset["url"],
+                        autocomplete="off", key=f"ai_url_{picked}")
+    model = c2.text_input("Ana model", value=cfg["model"] if same else preset["model"],
+                          autocomplete="off", key=f"ai_mod_{picked}")
     c3, c4 = st.columns(2)
     fast = c3.text_input("Hızlı model (CV Koçu / Mülakat — boşsa ana model)",
                          value=(cfg["fast_model"] if cfg["fast_model"] != cfg["model"] else "") if same else preset["fast_model"],
-                         key=f"ai_fast_{picked}")
+                         autocomplete="off", key=f"ai_fast_{picked}")
     key_help = "Kayıtlı anahtar mevcut; değiştirmeyecekseniz boş bırakın." if cfg["api_key"] else "Sağlayıcıdan aldığınız API anahtarı"
     api_key = c4.text_input("API Anahtarı" + (" (gerekli)" if preset["needs_key"] else " (yerelde boş)"),
                             value="", type="password", placeholder="••••••••" if cfg["api_key"] else "",
-                            help=key_help, key=f"ai_key_{picked}")
+                            autocomplete="new-password", help=key_help, key=f"ai_key_{picked}")
 
     b1, b2 = st.columns(2)
     if b1.button("💾 Yapay zekâ ayarını kaydet", type="primary", width="stretch", key="ai_save_btn"):
