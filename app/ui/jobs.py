@@ -4,10 +4,10 @@ import os
 
 import streamlit as st
 
-from ai_engine.brain import extract_positions_from_cv, AIError
+from ai_engine.brain import extract_positions_from_cv, AIError, check_ai
 from ai_engine.company_tier import TIER_LARGE, TIER_SMALL, classify_company
 from ai_engine.cv_builder import build_tailored_cv
-from app import campaign, context, followup
+from app import campaign, context, followup, settings
 from app.logger import get_logger
 from app.settings import STATUS_APPLIED_VERIFIED
 from app.ui.common import header, show_flash, set_flash, msg_kind, txt
@@ -29,11 +29,41 @@ def _search():
                        help="Listeden seçin veya yeni bir unvan yazın")
     city = c2.text_input("Şehir", value=context.user().get("city", "Ankara"))
     src = c3.radio("Kaynak", ["LinkedIn (hızlı)", "Kariyer.net"], horizontal=True)
+    auto_ats = st.checkbox("⚡ İlanları çekerken CV'ye göre ATS uyumluluğunu hemen kontrol et",
+                           value=settings.ai_config()["is_cloud"],
+                           help="Bulut API (Gemini vb.) ile yeni gelen her ilanın detayını ve CV uyum puanını anında hesaplar.")
     b1, b2 = st.columns([1, 1])
     if b1.button("🔎 İlanları getir", type="primary", width="stretch"):
+        before_ids = set(get_all_jobs()["id"].tolist()) if not get_all_jobs().empty else set()
         with st.spinner("İlanlar çekiliyor..."):
-            m = (stats_message("LinkedIn", scrape_linkedin_jobs(pos, city)) if src.startswith("LinkedIn")
-                 else stats_message("Kariyer.net", scrape_kariyernet_browser(pos, city)))
+            st_res = (scrape_linkedin_jobs(pos, city) if src.startswith("LinkedIn")
+                      else scrape_kariyernet_browser(pos, city))
+            m = stats_message("LinkedIn" if src.startswith("LinkedIn") else "Kariyer.net", st_res)
+        if auto_ats and st_res.get("added", 0) > 0:
+            ai_ok, ai_msg = check_ai()
+            if ai_ok:
+                all_now = get_all_jobs()
+                newly = all_now[~all_now["id"].isin(before_ids)]
+                only_big = bool(context.user().get("only_large_companies"))
+                rows_to_score = []
+                for _, r in newly.iterrows():
+                    ct = classify_company(r.get("Şirket"), r.get("details"), r.get("Pozisyon"))
+                    if only_big and ct["tier"] == TIER_SMALL:
+                        continue
+                    rows_to_score.append(r)
+                if rows_to_score:
+                    bar = st.progress(0.0, text=f"CV'ye göre ATS kontrolü başlıyor ({len(rows_to_score)} yeni ilan)...")
+                    scored = 0
+                    for idx, r in enumerate(rows_to_score[:20], 1):
+                        bar.progress((idx - 1) / min(len(rows_to_score), 20),
+                                     text=f"[{idx}/{min(len(rows_to_score), 20)}] ATS: {r['Şirket']} — {r['Pozisyon']}")
+                        ok_a, _ = campaign.analyze_job(r, brief=True)
+                        if ok_a:
+                            scored += 1
+                    bar.progress(1.0, text="ATS kontrolü bitti")
+                    m += f" · **{scored} yeni ilanın CV/ATS uyumu hesaplandı.**"
+            else:
+                m += f" (ATS atlandı: {ai_msg})"
         set_flash("jobs", msg_kind(m), m)
         st.rerun()
     if b2.button("🧠 CV'ime göre pozisyon öner", width="stretch"):

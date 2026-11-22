@@ -188,18 +188,20 @@ def _analyze_and_prepare(totals):
         log(f"Yapay zekâ hazır değil ({lm_msg}); analiz bekliyor", state="lm kapalı")
         return False
     is_cloud = _settings.ai_config()["is_cloud"]
+    batch_limit = max(jobbot.MAX_ANALYZE_PER_CYCLE, 30) if is_cloud else jobbot.MAX_ANALYZE_PER_CYCLE
 
     jobs = get_all_jobs()
-    pending = _prioritize_large(campaign.unanalyzed_jobs(jobs)).head(jobbot.MAX_ANALYZE_PER_CYCLE)
+    pending = _prioritize_large(campaign.unanalyzed_jobs(jobs)).head(batch_limit)
     analyzed_now = 0
     for _, row in pending.iterrows():
-        log(f"Analiz ediliyor: {row['Şirket']} — {row['Pozisyon']}", state="çalışıyor")
+        log(f"CV'ye göre ATS kontrol ediliyor: {row['Şirket']} — {row['Pozisyon']}", state="çalışıyor")
         ok, msg = campaign.analyze_job(row, brief=True)
         if ok:
             analyzed_now += 1
             totals["analyzed_total"] += 1
+            log(f"ATS sonucu: {row['Şirket']} — {row['Pozisyon']} → {msg}", **totals)
             if is_cloud:
-                time.sleep(3)  # ücretsiz bulut API RPM sınırına nazik aralık
+                time.sleep(2.5)  # ücretsiz bulut API RPM sınırına nazik aralık
         else:
             log(f"Analiz atlandı ({row['Şirket']}): {msg}")
             if any(k in msg for k in ("LM Studio", "ulaşılamadı", "yetkisiz", "kota", "API anahtarı")):
@@ -253,23 +255,23 @@ def _analyze_and_prepare(totals):
 
 
 def _nap_with_lm_watch(seconds, totals):
-    """Sonraki taramayı beklerken LM Studio açılırsa ve bekleyen ilan varsa hemen analiz eder."""
-    from ai_engine.brain import check_lm_studio
+    """Sonraki taramayı beklerken yapay zekâ (Gemini API / LM Studio) hazırsa bekleyen ilanların ATS analizini bitirir."""
+    from ai_engine.brain import check_ai
 
     until = datetime.now() + timedelta(seconds=seconds)
     last_lm_check = datetime.now()
     while datetime.now() < until:
-        time.sleep(min(30, max(1, (until - datetime.now()).total_seconds())))
-        if (datetime.now() - last_lm_check).total_seconds() >= 90:
+        time.sleep(min(20, max(1, (until - datetime.now()).total_seconds())))
+        if (datetime.now() - last_lm_check).total_seconds() >= 60:
             last_lm_check = datetime.now()
             if not (START_H <= datetime.now().hour < END_H):
                 continue
-            pending = campaign.unanalyzed_jobs(get_all_jobs())
-            if not pending.empty and check_lm_studio()[0]:
-                log(f"LM Studio açıldı; bekleyen {len(pending)} ilandan analiz başlıyor...", state="çalışıyor")
+            pending = _prioritize_large(campaign.unanalyzed_jobs(get_all_jobs()))
+            if not pending.empty and check_ai()[0]:
+                log(f"Yapay zekâ hazır; bekleyen {len(pending)} ilanın CV/ATS kontrolü başlıyor...", state="çalışıyor")
                 _analyze_and_prepare(totals)
                 nxt = until.strftime("%d.%m %H:%M")
-                log(f"Analiz bitti; sonraki tarama {until:%H:%M}", state="beklemede", next_run=nxt, **totals)
+                log(f"ATS kontrolü bitti; sonraki tarama {until:%H:%M}", state="beklemede", next_run=nxt, **totals)
 
 
 def _on_term(signum, frame):
