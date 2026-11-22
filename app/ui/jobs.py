@@ -54,7 +54,7 @@ def _job_detail(jobs):
     row = jobs[jobs["id"] == sel].iloc[0]
     apply_cv = choose_cv(row["tailored_cv_path"])
 
-    a1, a2, a3, a4, a5 = st.columns([1.3, 1.2, 1.2, 1.3, 0.6])
+    a1, a2, a3, a4, a5, a6 = st.columns([1.2, 1.1, 1.1, 1.1, 1.1, 0.5])
     if a1.button("🧠 Analiz et (tam)", type="primary", width="stretch"):
         with st.spinner("İlan okunuyor; puan, ön yazı ve İK notu üretiliyor..."):
             ok, m = campaign.analyze_job(row, brief=False)
@@ -73,7 +73,11 @@ def _job_detail(jobs):
     if a4.button("🤝 Şirketin İK'sını aç", width="stretch"):
         with st.spinner(f"{row['Şirket']} İK uzmanları LinkedIn'de açılıyor..."):
             open_linkedin_hr_hunter(build_hr_search_url(row["Şirket"], row["Şehir"]))
-    if a5.button("🗑️", width="stretch", help="İlanı sil"):
+    if a5.button("🎤 Mülakat provası", width="stretch", help="Bu ilanın gereksinimleriyle sesli mülakat provası başlat"):
+        st.session_state["iv_preselect_job_id"] = int(sel)
+        if "interview" in st.session_state.get("_pages", {}):
+            st.switch_page(st.session_state["_pages"]["interview"])
+    if a6.button("🗑️", width="stretch", help="İlanı sil"):
         delete_single_job(int(sel))
         st.rerun()
     show_flash("detail")
@@ -152,12 +156,19 @@ def page_jobs():
         return
 
     st.subheader(f"İlanlar ({len(jobs)})")
-    f1, f2 = st.columns([3, 1])
-    status_filter = f1.multiselect("Duruma göre süz", sorted(jobs["Durum"].dropna().unique()), placeholder="Tümü")
-    if f2.button("🧹 İşlenmemişleri temizle", width="stretch"):
+    f1, f2, f3 = st.columns([2, 2, 1])
+    search_q = f1.text_input("Ara (şirket / pozisyon)", placeholder="Örn: Aselsan, Sistem, Linux")
+    status_filter = f2.multiselect("Duruma göre süz", sorted(jobs["Durum"].dropna().unique()), placeholder="Tümü")
+    f3.markdown("<br>", unsafe_allow_html=True)
+    if f3.button("🧹 İşlenmemişleri temizle", width="stretch"):
         delete_unprocessed_jobs()
         st.rerun()
     view = jobs[jobs["Durum"].isin(status_filter)] if status_filter else jobs
+    if search_q.strip():
+        q_low = search_q.strip().lower()
+        mask = (view["Şirket"].fillna("").str.lower().str.contains(q_low, regex=False) |
+                view["Pozisyon"].fillna("").str.lower().str.contains(q_low, regex=False))
+        view = view[mask]
     st.dataframe(view[["id", "Kaynak", "Pozisyon", "Şirket", "Şehir", "ATS Uyum", "Durum", "url"]], width="stretch",
                  hide_index=True, height=300, column_config={"url": st.column_config.LinkColumn("İlan", display_text="Aç")})
 

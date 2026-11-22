@@ -56,11 +56,23 @@ def _setup():
     st.markdown("#### Yeni mülakat")
     jobs = get_all_jobs()
     options = {f"Genel — {FIELD_LABEL.get(field, field)} pozisyonları": ("", "")}
+    preselect_label = None
+    preselect_id = st.session_state.pop("iv_preselect_job_id", None)
     if not jobs.empty:
-        for _, r in jobs[jobs["details"].fillna("").str.len() > 50].head(40).iterrows():
-            options[f"{r['Pozisyon']} — {r['Şirket']}"] = (r["Pozisyon"], r["details"])
+        detailed = jobs[jobs["details"].fillna("").str.len() > 50]
+        if preselect_id is not None:
+            hit = jobs[jobs["id"] == preselect_id]
+            if not hit.empty:
+                r = hit.iloc[0]
+                preselect_label = f"{r['Pozisyon']} — {r['Şirket']}"
+                options[preselect_label] = (r["Pozisyon"], r["details"] or "")
+        for _, r in detailed.head(40).iterrows():
+            lbl = f"{r['Pozisyon']} — {r['Şirket']}"
+            options.setdefault(lbl, (r["Pozisyon"], r["details"]))
+    opt_keys = list(options)
+    default_idx = opt_keys.index(preselect_label) if preselect_label in opt_keys else 0
     c1, c2 = st.columns([2, 1])
-    target = c1.selectbox("Hangi pozisyon için prova?", list(options),
+    target = c1.selectbox("Hangi pozisyon için prova?", opt_keys, index=default_idx,
                           help="Analiz edilmiş ilanlarınızdan birini seçerseniz sorular o ilanın gereksinimlerine göre olur.")
     custom = c2.text_input("ya da unvan yazın", placeholder="Örn: Sistem Uzmanı")
     c1, c2, c3, c4 = st.columns(4)
@@ -94,8 +106,27 @@ def _setup():
     past = iv.list_sessions(context.current())
     if past:
         st.markdown("#### Önceki provalarınız")
-        st.dataframe(pd.DataFrame(past), hide_index=True, width="stretch",
+        df_past = pd.DataFrame(past).drop(columns=["file"], errors="ignore")
+        st.dataframe(df_past, hide_index=True, width="stretch",
                      column_config={"Puan": st.column_config.ProgressColumn("Puan", min_value=0, max_value=100, format="%d")})
+        labels = {p["file"]: f"{p['Tarih']} · {p['Pozisyon']} ({p['Puan']}/100)" for p in past if p.get("file")}
+        if labels:
+            with st.expander("Geçmiş bir provayı ayrıntılı incele"):
+                picked = st.selectbox("Oturum seçin", list(labels), format_func=labels.get, key=_k("past_pick"))
+                try:
+                    sess = iv.load_session(context.current(), picked)
+                    rep = sess.get("report") or {}
+                    st.caption(f"Genel puan: **{rep.get('overall', 0)}/100** · Toplam {rep.get('words', 0)} kelime · "
+                               f"Dolgu: {rep.get('fillers', 0)}")
+                    for r in sess.get("results", []):
+                        ev = r.get("eval") or {}
+                        q = r.get("question") or {}
+                        st.markdown(f"**{ev.get('score', '-')}/5 · {iv.STAGE_LABEL.get(q.get('stage', ''), '')}** — {q.get('question', '')}")
+                        st.caption(f"Cevabınız: {r.get('answer') or '(geçildi)'}")
+                        if ev:
+                            _feedback_card(ev)
+                except (OSError, ValueError):
+                    st.caption("Oturum dosyası okunamadı.")
 
 
 # ---------------------------------------------------------------- mülakat

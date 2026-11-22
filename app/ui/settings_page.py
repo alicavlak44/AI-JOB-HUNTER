@@ -4,7 +4,8 @@ import os
 import pandas as pd
 import streamlit as st
 
-from ai_engine.brain import check_lm_studio
+from ai_engine import voice
+from ai_engine.brain import check_lm_studio, fast_model
 from app import context, guard, settings
 from app.logger import read_recent_logs
 from app.ui.common import header
@@ -14,7 +15,12 @@ from database.db_manager import reset_database
 def page_settings():
     header("Ayarlar", "Sistem durumu, koruma limitleri ve bakım.")
     ok, msg = check_lm_studio()
-    (st.success if ok else st.error)(f"🧠 Yapay zeka (LM Studio): {msg} · model: {settings.LM_MODEL}")
+    fast_note = f" · hızlı model: {fast_model()}" if settings.LM_FAST_MODEL else ""
+    (st.success if ok else st.error)(f"🧠 Yapay zeka (LM Studio): {msg} · model: {settings.LM_MODEL}{fast_note}")
+    tts_ok, stt_ok = voice.tts_available(), voice.stt_available()
+    voice_msg = (f"Sesli mülakat: TTS ({voice.TTS_VOICE}) {'hazır' if tts_ok else 'yok'} · "
+                 f"Whisper ({voice.WHISPER_MODEL}) {'hazır' if stt_ok else 'kurulu değil'}")
+    (st.success if (tts_ok and stt_ok) else st.info)(f"🎤 {voice_msg}")
     cv = context.cv_path()
     (st.success if os.path.exists(cv) else st.error)(
         f"📄 Ana CV: {os.path.relpath(cv, settings.BASE_DIR) if os.path.exists(cv) else 'yok — aşağıdan yükleyin'}")

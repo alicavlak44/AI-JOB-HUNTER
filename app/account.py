@@ -7,6 +7,7 @@
 - recommendations(): sayılara ve profile bakarak başarı oranını artıracak somut öneriler (kural tabanlı).
 """
 import json
+import re
 
 from app import dbconn
 from datetime import datetime
@@ -15,6 +16,7 @@ from app import guard
 from app.logger import get_logger
 
 log = get_logger("account")
+_LI_PROFILE_RE = re.compile(r"^(https?://[^/]+/in/[^/]+)(?:/.*)?$")
 
 
 def _connect():
@@ -27,9 +29,11 @@ def _connect():
 
 
 def norm_url(url):
-    """Profil adresini karşılaştırılabilir hale getirir (sorgu, sondaki /, büyük harf)."""
+    """Profil adresini karşılaştırılabilir hale getirir (sorgu, alt yol /opportunities/..., sondaki /, büyük harf)."""
     u = (url or "").split("?")[0].split("#")[0].rstrip("/").lower()
-    return u.replace("https://tr.linkedin.com", "https://www.linkedin.com")
+    u = u.replace("https://tr.linkedin.com", "https://www.linkedin.com")
+    m = _LI_PROFILE_RE.match(u)
+    return m.group(1) if m else u
 
 
 def save_known_people(people, kind):

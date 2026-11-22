@@ -311,11 +311,21 @@ def list_sessions(slug, limit=10):
     d = _dir(slug)
     out = []
     for name in sorted(os.listdir(d), reverse=True)[:limit]:
+        if not name.endswith(".json"):
+            continue
         try:
             with open(os.path.join(d, name), encoding="utf-8") as f:
                 s = json.load(f)
             out.append({"Tarih": s.get("saved", name[:13]), "Pozisyon": s.get("title", "-"),
-                        "Puan": s.get("report", {}).get("overall", 0), "Soru": len(s.get("results", []))})
+                        "Puan": s.get("report", {}).get("overall", 0), "Soru": len(s.get("results", [])),
+                        "file": name})
         except (OSError, json.JSONDecodeError):
             continue
     return out
+
+
+def load_session(slug, filename):
+    """Kaydedilmiş bir mülakat provasını (sorular, cevaplar, karne) okur."""
+    path = os.path.join(_dir(slug), os.path.basename(filename))
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)

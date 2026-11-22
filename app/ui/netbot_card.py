@@ -17,9 +17,11 @@ def netbot_card():
     color, label = STATE_STYLE.get(s["state"], ("gray", s["state"]))
     with st.container(border=True):
         c1, c2 = st.columns([3, 2])
+        city = context.user().get("city") or "Ankara"
+        who = "İK ve BT yöneticilerine, işe alımcılara ve BT çalışanlarına" if context.field() == "it" else "İK ve işe alım yöneticilerine"
         c1.markdown(f"#### LinkedIn ağ botu  :{color}[● {label}]")
-        c1.caption(f"Ankara'daki şirketlerin İK ve BT yöneticilerine, işe alımcılara ve BT çalışanlarına notsuz bağlantı "
-                   f"daveti. {netbot.WORK_HOURS[0]:02d}:00–{netbot.WORK_HOURS[1]:02d}:00 arası, günde en fazla "
+        c1.caption(f"{city} odağında önce başvurduğunuz/yüksek uyumlu şirketlerin, ardından büyük şirketlerin {who} "
+                   f"notsuz bağlantı daveti. {netbot.WORK_HOURS[0]:02d}:00–{netbot.WORK_HOURS[1]:02d}:00 arası, günde en fazla "
                    f"{netbot.DAILY}, haftada en fazla {netbot.WEEKLY} davet. Panel kapansa da çalışmaya devam eder.")
         b1, b2 = c2.columns(2)
         if b1.button("Başlat", type="primary", width="stretch", disabled=s["running"], key="nb_start",

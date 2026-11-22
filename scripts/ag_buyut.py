@@ -42,13 +42,17 @@ COMPANIES = [
     "Ziraat Teknoloji", "Ziraat Bankası", "Halkbank", "Vakıfbank", "Kuveyt Türk", "Vakıf Katılım",
     "Ziraat Katılım", "PTT",
 ]
-ROLES = ["hr", "it"]
-# Şirketten bağımsız: Ankara'daki işe alımcılar ve BT çalışanları (aynı alandakiler daveti daha çok kabul eder)
-SEARCHES = [("IT Recruiter", "hr"), ("Sistem Yöneticisi", "it"), ("İşe Alım Uzmanı", "hr"), ("Network Engineer", "it"),
-            ("Siber Güvenlik", "it"), ("Bilgi İşlem", "it"), ("Talent Acquisition", "hr"), ("Sistem Uzmanı", "it"),
-            ("Bilgi Güvenliği", "it"), ("DevOps", "it"), ("İnsan Kaynakları Uzmanı", "hr"), ("Ağ Yöneticisi", "it")]
+ROLES, SEARCHES = netbot.search_plan(context.field())
+CITY = (context.user().get("city") or "Ankara").strip()
 DEADLINE = datetime.now() + timedelta(days=40)
 START_H, END_H = WORK_HOURS
+
+
+def _company_queue():
+    """Başvurulan ve yüksek uyumlu ilanların şirketleri en başta + sabit şirket listesi."""
+    base = COMPANIES if CITY.replace("I", "ı").replace("İ", "i").lower() == "ankara" else []
+    prio = netbot.priority_companies()
+    return netbot.merge_companies(prio, base or COMPANIES)
 
 
 def log(*a, state=None):
@@ -94,7 +98,7 @@ def wait_for_guard():
 
 
 def run_one(company, role):
-    r = send_hr_invites(company, "Ankara", max_invites=3, role=role)
+    r = send_hr_invites(company, CITY, max_invites=3, role=role)
     log(company, "BT" if role == "it" else "İK", json.dumps(r, ensure_ascii=False))
     return r
 
@@ -102,7 +106,7 @@ def run_one(company, role):
 def run_search(i):
     """Şirketten bağımsız arama: kişi bul (en fazla 5) ve davet et. Dönüş: (gönderilenler, hata)"""
     query, role = SEARCHES[i % len(SEARCHES)]
-    found = find_hr_people(query, "Ankara", limit=5, max_pages=1, role=role)
+    found = find_hr_people(query, CITY, limit=5, max_pages=1, role=role)
     if found["error"]:
         log(f"Arama '{query}':", found["error"])
         return [], found["error"]
@@ -125,7 +129,8 @@ def main():
     try:
         while not stop and datetime.now() < DEADLINE:
             sent_this_pass = 0
-            for c in COMPANIES:
+            queue = _company_queue()
+            for c in queue:
                 for role in ROLES:
                     if not wait_for_guard():
                         stop = True

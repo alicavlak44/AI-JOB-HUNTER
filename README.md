@@ -8,11 +8,12 @@ Yerel yapay zekâ ile çalışan iş arama asistanı: ilan bulur, CV'nize göre 
 |---|---|
 | 🏠 **Özet** | Hesap bağlantıları, bugünkü durum, başarı oranı, en önemli 3 öneri |
 | 🔎 **İlanlar** | LinkedIn ve Kariyer.net'ten ilan çeker, alakasızları eler, tek ilan için analiz, başvuru ve ilana özel CV |
-| 🚀 **Toplu Başvuru** | Bekleyen ilanları analiz eder; uyumu %65+ olanlardan sizin seçtiklerinize başvurur |
-| 🤝 **İK Ağı** | Şehirdeki İK yöneticilerini bulur, notsuz davet gönderir. Bağlantılarınız ve davetlileriniz atlanır |
+| 🚀 **Toplu Başvuru** | Bekleyen ilanları analiz eder, uyumu %65+ olanlardan seçtiklerinize başvurur; **Otomatik İlan Avcısı** arka planda tarayıp %75+ fırsatları ön yazı ve özel CV ile hazırlar |
+| 🤝 **İK Ağı** | Şehirdeki İK yöneticilerini bulur, notsuz davet gönderir; arka plan **LinkedIn Ağ Botu** önce başvurduğunuz/yüksek uyumlu şirketlere, ardından büyük şirketlere ve genel İK/işe alım yöneticilerine davet atar |
 | 📈 **Başarı** | Hesaplarınızdan (sadece okuyarak) başvuru → görüntülenme → mülakat oranları ve öneriler |
 | 📄 **CV Stüdyosu** | CV içe aktar, 7 formattan birini seç, soru soran CV Koçu ile güçlendir (uydurmasız), canlı önizle, PDF/Word üret |
-| ⚙️ **Ayarlar** | Yapay zekâ durumu, hesap koruması limitleri, loglar |
+| 🎤 **Mülakat Provası** | Alana, CV'ye ve seçtiğiniz ilana özel sesli/yazılı yapay zekâ mülakatı (macOS Türkçe TTS + yerel `mlx-whisper`), puanlı karne ve geçmiş oturum inceleme |
+| ⚙️ **Ayarlar** | Yapay zekâ & ses durumu, profil, soru hafızası, hesap koruması limitleri, loglar |
 
 ## Güvenlik ilkeleri
 
@@ -34,13 +35,12 @@ Yerel yapay zekâ ile çalışan iş arama asistanı: ilan bulur, CV'nize göre 
 4. CV'nizi `documents/Cv.pdf` olarak koyun.
 5. Tarayıcı işlemleri bilgisayardaki Google Chrome ile yapılır (giriş oturumu kalıcı profilde saklanır). Chrome yoksa
    Playwright'ın Chromium'u kullanılır (1. adımdaki `playwright install chromium`).
-6. LinkedIn ağ botunu arka planda çalıştırmak için: `nohup caffeinate -ims venv/bin/python scripts/ag_buyut.py >> logs/ag_botu.log 2>&1 &`
-   Bot ile panel aynı Chrome profilini kullanır; biri kullanırken diğeri sırasını bekler.
-5. Uygulamayı başlatın:
+6. Arka plan botlarını panelden tek tıkla başlatıp durdurabilirsiniz (**İK Ağı → LinkedIn ağ botu**, **Toplu Başvuru → Otomatik ilan avcısı**); ikisi de `caffeinate` ile panel kapansa da çalışır ve Chrome profilini sırayla paylaşır.
+7. Uygulamayı başlatın:
    ```bash
    venv/bin/streamlit run app/dashboard.py
    ```
-6. 🏠 Özet sayfasından LinkedIn ve Kariyer.net'e bir kez giriş yapın. Oturum botun kendi tarayıcı profilinde saklanır.
+8. 🏠 Özet sayfasından LinkedIn ve Kariyer.net'e bir kez giriş yapın. Oturum botun kendi tarayıcı profilinde saklanır.
 
 ## Testler
 

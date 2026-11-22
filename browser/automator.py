@@ -847,8 +847,9 @@ def company_key(company):
 def pick_hr_profiles(cards, company, limit=1, role="hr"):
     """Arama sonucu kartlarından şirketle eşleşen İK kişilerini seçer.
     cards: [{"url": ..., "text": ...}] — şirket adı kartta geçmeyen kişiler ALINMAZ (rastgele davet yok)."""
+    from app import account
     key = company_key(company)
-    picked = []
+    picked, seen_urls = [], set()
     for c in cards:
         text = " " + tr_lower(c.get("text", "")).replace("\n", " ") + " "
         # tam şirket anahtarı ('ankara otomotiv'), kelime sınırıyla ('koç' ≠ 'kariyer koçu')
@@ -858,10 +859,12 @@ def pick_hr_profiles(cards, company, limit=1, role="hr"):
             continue
         if any(t in text for t in PENDING_TEXTS) or degree_of(c.get("text")) == 1:
             continue
-        if _already_invited(c["url"], ""):
+        url = account.norm_url(c["url"])
+        if _already_invited(url, ""):
             continue
-        if c["url"] not in [p["url"] for p in picked]:
-            picked.append(c)
+        if url not in seen_urls:
+            seen_urls.add(url)
+            picked.append({**c, "url": url})
         if len(picked) >= limit:
             break
     return picked
@@ -870,7 +873,9 @@ def pick_hr_profiles(cards, company, limit=1, role="hr"):
 _CARDS_JS = """() => {
     const seen = new Map();
     for (const a of document.querySelectorAll('main a[href*="/in/"]')) {
-        const url = a.href.split('?')[0];
+        const m = a.href.split('?')[0].match(/^(https?:\\/\\/[^/]+\\/in\\/[^/]+)/i);
+        if (!m) continue;
+        const url = m[1] + '/';
         let card = a.closest('li') || a.closest('[data-chameleon-result-urn]') || a.parentElement;
         for (let i = 0; i < 6 && card && card.innerText.length < 60; i++) card = card.parentElement;
         const text = card ? card.innerText : a.innerText;
@@ -971,10 +976,11 @@ def _invite_on_profile(page, profile_url):
 
 def parse_person_card(card):
     """Arama kartı → {"url", "name", "headline", "location", "text"}."""
+    from app import account
     lines = [l.strip() for l in (card.get("text") or "").split("\n") if l.strip() and l.strip() not in ("•",)]
     lines = [l for l in lines if not re.fullmatch(r"[•·]?\s*\d+\.?|\d+\. derece|.*bağlantınız|.*takipçi", l)]
     name = re.sub(r"\s*•.*$", "", lines[0]) if lines else ""
-    return {"url": card["url"], "name": name, "headline": lines[1] if len(lines) > 1 else "",
+    return {"url": account.norm_url(card["url"]), "name": name, "headline": lines[1] if len(lines) > 1 else "",
             "location": lines[2] if len(lines) > 2 else "", "text": card.get("text", "")}
 
 
@@ -1002,6 +1008,7 @@ def _already_invited(url, name):
     """Daha önce davet edilmiş, daveti bekleyen veya zaten bağlantı olan kişi mi?
     (bot kayıtları + hesaptan senkronlanan davet/bağlantı listesi)"""
     from app import account
+    url = account.norm_url(url)
     if account.is_known_person(url):
         return True
     if guard.done_recently("LinkedIn", guard.INVITE, f"url={url}", days=365):

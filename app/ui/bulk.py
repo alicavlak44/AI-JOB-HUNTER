@@ -5,14 +5,16 @@ import streamlit as st
 from app import campaign, guard
 from app.settings import AUTO_APPLY_MIN_SCORE, MAX_DAILY_APPLICATIONS
 from app.ui.common import header, step
+from app.ui.jobbot_card import jobbot_card
 from database.db_manager import get_all_jobs
 
 
 def page_bulk():
     header("Toplu Başvuru", "Sadece işaretlediğiniz ilanlara başvurulur. Hesap koruması her adımda uygulanır.")
+    jobbot_card()
     jobs = get_all_jobs()
     if jobs.empty:
-        st.info("Henüz ilan yok → 🔎 İlanlar sayfasından ilan getirin.")
+        st.info("Henüz ilan yok → 🔎 İlanlar sayfasından ilan getirin ya da yukarıdan Otomatik ilan avcısını başlatın.")
         return
 
     step("1️⃣ Bekleyen ilanları analiz et")

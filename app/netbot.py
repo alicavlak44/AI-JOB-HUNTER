@@ -11,13 +11,84 @@ import subprocess
 import sys
 from datetime import datetime, timedelta
 
-from app import dbconn, guard
-from app.settings import BASE_DIR, LOGS_DIR
+from app import context, dbconn, guard
+from app.settings import AUTO_APPLY_MIN_SCORE, BASE_DIR, LOGS_DIR, STATUS_APPLIED_VERIFIED
 
 SCRIPT = os.path.join(BASE_DIR, "scripts", "ag_buyut.py")
 from app.netbot_limits import LIMITS, WORK_HOURS  # noqa: E402
 
 DAILY, WEEKLY = int(LIMITS["MAX_DAILY_INVITES"]), int(LIMITS["MAX_WEEKLY_INVITES"])
+_HIDDEN_COMPANIES = {"", "-", "gizli", "gizli şirket", "gizli firma", "confidential", "anonymous", "belirtilmemiş"}
+
+_SEARCHES = {
+    "it": [
+        ("İnsan Kaynakları Müdürü", "hr"), ("İşe Alım Yöneticisi", "hr"), ("IT Recruiter", "hr"),
+        ("Sistem Yöneticisi", "it"), ("İşe Alım Uzmanı", "hr"), ("Network Engineer", "it"),
+        ("Siber Güvenlik", "it"), ("Bilgi İşlem", "it"), ("Talent Acquisition", "hr"),
+        ("Sistem Uzmanı", "it"), ("Bilgi Güvenliği", "it"), ("DevOps", "it"),
+        ("İnsan Kaynakları Yöneticisi", "hr"), ("Ağ Yöneticisi", "it"),
+    ],
+    "ik": [
+        ("İnsan Kaynakları Müdürü", "hr"), ("İşe Alım Yöneticisi", "hr"), ("İnsan Kaynakları Direktörü", "hr"),
+        ("HR Business Partner", "hr"), ("Talent Acquisition", "hr"), ("İşe Alım Uzmanı", "hr"),
+        ("İnsan Kaynakları Yöneticisi", "hr"),
+    ],
+    "genel": [
+        ("İnsan Kaynakları Müdürü", "hr"), ("İşe Alım Yöneticisi", "hr"), ("İşe Alım Uzmanı", "hr"),
+        ("Talent Acquisition", "hr"), ("İnsan Kaynakları Yöneticisi", "hr"),
+    ],
+}
+
+
+def search_plan(field="it"):
+    """Kullanıcı alanına göre (şirket içi roller, şirketten bağımsız aramalar) döner."""
+    f = field if field in _SEARCHES else "genel"
+    roles = ["hr", "it"] if f == "it" else ["hr"]
+    return roles, list(_SEARCHES[f])
+
+
+def _tr_norm(name):
+    return (name or "").strip().replace("I", "ı").replace("İ", "i").lower()
+
+
+def priority_companies(jobs_df=None, min_score=AUTO_APPLY_MIN_SCORE):
+    """Başvurulan ve yüksek uyumlu ilanların şirketleri (önce başvurulanlar, sonra en yüksek puanlılar)."""
+    if jobs_df is None:
+        from database.db_manager import get_all_jobs
+        jobs_df = get_all_jobs()
+    if jobs_df is None or jobs_df.empty:
+        return []
+    from database.stats import parse_score
+    seen, out = set(), []
+
+    def add(name):
+        clean = (name or "").strip()
+        key = _tr_norm(clean)
+        if not key or key in _HIDDEN_COMPANIES or key in seen or "gizli" in key:
+            return
+        seen.add(key)
+        out.append(clean)
+
+    applied = jobs_df[jobs_df["Durum"] == STATUS_APPLIED_VERIFIED]
+    for c in applied["Şirket"].dropna().tolist():
+        add(c)
+    scored = jobs_df.copy()
+    scored["_p"] = scored["ATS Uyum"].map(parse_score)
+    high = scored[scored["_p"].notna() & (scored["_p"] >= min_score)].sort_values("_p", ascending=False)
+    for c in high["Şirket"].dropna().tolist():
+        add(c)
+    return out
+
+
+def merge_companies(priority, base):
+    """Öncelikli şirketleri başa alır, sabit listeyle tekrarsız birleştirir."""
+    seen, out = set(), []
+    for name in list(priority) + list(base):
+        key = _tr_norm(name)
+        if key and key not in seen:
+            seen.add(key)
+            out.append(name.strip())
+    return out
 
 
 def state_path(slug):

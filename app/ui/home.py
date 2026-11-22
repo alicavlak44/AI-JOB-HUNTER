@@ -47,14 +47,24 @@ def page_home():
     for plat, g in (("LinkedIn", g_li), ("Kariyer.net", g_kn)):
         if g["engel"]:
             st.error(f"{plat} bot işlemleri durduruldu: {g['engel']}")
-    from app import netbot
+    from app import jobbot, netbot
+    from app.ui.jobbot_card import STATE_STYLE as JB_STYLE
     from app.ui.netbot_card import STATE_STYLE
     nb = netbot.status(context.current())
     color, label = STATE_STYLE.get(nb["state"], ("gray", nb["state"]))
     b1, b2 = st.columns([3, 1])
     b1.markdown(f"**LinkedIn ağ botu** :{color}[● {label}] · son 24 saatte {nb['today']}, son 7 günde {nb['week']}/{netbot.WEEKLY} davet")
     if "network" in st.session_state.get("_pages", {}):
-        b2.page_link(st.session_state["_pages"]["network"], label="Botu yönet", icon=":material/tune:")
+        b2.page_link(st.session_state["_pages"]["network"], label="Ağ botunu yönet", icon=":material/tune:")
+
+    jb = jobbot.status(context.current())
+    jcolor, jlabel = JB_STYLE.get(jb["state"], ("gray", jb["state"]))
+    opps = jobbot.ready_opportunities(jobs)
+    j1, j2 = st.columns([3, 1])
+    j1.markdown(f"**Otomatik ilan avcısı** :{jcolor}[● {jlabel}] · %{jobbot.PREP_MIN_SCORE}+ hazır fırsat: **{len(opps)}**"
+                + (f" · sonraki tarama: {jb['next_run']}" if jb["running"] and jb["next_run"] else ""))
+    if "bulk" in st.session_state.get("_pages", {}):
+        j2.page_link(st.session_state["_pages"]["bulk"], label="Avcıyı yönet", icon=":material/smart_toy:")
 
     st.subheader("Başarı oranı")
     metrics = account.success_metrics()
