@@ -26,7 +26,7 @@ class AIProviderConfigTests(unittest.TestCase):
         self.assertEqual(cfg["model"], "gemini-3.5-flash")
         self.assertEqual(cfg["fast_model"], "gemini-3.5-flash-lite")
         self.assertEqual(cfg["api_key"], "AIzaTestKey123")
-        self.assertEqual(cfg["reasoning_effort"], "")  # bulutta 'none' gönderilmez
+        self.assertEqual(cfg["reasoning_effort"], "none")  # Gemini 3.5 Flash düşünmeyi kapatıp çok hızlı döner
         self.assertTrue(cfg["is_cloud"])
         with open(self.env_file, encoding="utf-8") as f:
             raw = f.read()

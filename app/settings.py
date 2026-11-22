@@ -37,7 +37,7 @@ AI_PROVIDERS = {
         "url": "https://generativelanguage.googleapis.com/v1beta/openai/",
         "model": "gemini-3.5-flash",
         "fast_model": "gemini-3.5-flash-lite",
-        "reasoning": "",
+        "reasoning": "none",
         "needs_key": True,
     },
     "openai": {
@@ -118,9 +118,9 @@ def ai_config(env_path=None):
     model = (get("LM_MODEL", "") or preset["model"]).strip()
     fast = (get("LM_FAST_MODEL", "") or preset["fast_model"]).strip()
     api_key = (get("LM_API_KEY", "") or get("GEMINI_API_KEY", "") or get("OPENAI_API_KEY", "")).strip()
-    # Bulut sağlayıcılarda reasoning_effort varsayılan olarak gönderilmez (400 hatasını önler)
+    # Desteklemeyen bulut sağlayıcılarda (openai/groq/openrouter) 'none' gönderilmez (400 hatasını önler)
     reasoning = get("LM_REASONING_EFFORT", preset["reasoning"]).strip()
-    if provider != "local" and reasoning == "none":
+    if provider not in ("local", "gemini") and reasoning == "none":
         reasoning = ""
     return {
         "provider": provider,
