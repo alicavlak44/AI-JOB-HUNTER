@@ -212,10 +212,14 @@ def _analyze_and_prepare(totals):
             totals["analyzed_total"] += 1
             log(f"ATS sonucu: {row['Şirket']} — {row['Pozisyon']} → {msg}", **totals)
             if is_cloud:
-                time.sleep(2.5)  # ücretsiz bulut API RPM sınırına nazik aralık
+                time.sleep(6.0)  # ücretsiz bulut API RPM sınırını aşmamak için nazik aralık
         else:
             log(f"Analiz atlandı ({row['Şirket']}): {msg}")
-            if any(k in msg for k in ("LM Studio", "ulaşılamadı", "yetkisiz", "kota", "API anahtarı")):
+            if "hız/kota" in msg:
+                log("Bulut API hız sınırında; 60 sn bekleniyor...", state="beklemede")
+                time.sleep(60)
+                break
+            if any(k in msg for k in ("LM Studio", "ulaşılamadı", "yetkisiz", "API anahtarı")):
                 break
     if analyzed_now:
         log(f"{analyzed_now} ilan analiz edildi", **totals)

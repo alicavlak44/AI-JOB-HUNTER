@@ -104,6 +104,13 @@ def _last(platform, action):
     return (datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S"), row[1]) if row else (None, None)
 
 
+def _cooldown_hours(reason):
+    """Geçici HTTP 429 hız sınırında kısa (varsayılan 2 saat), ciddi uyarılarda (999/doğrulama) 24 saat bekle."""
+    if (reason or "").strip() == "HTTP 429":
+        return settings.RATE_LIMIT_COOLDOWN_HOURS
+    return settings.BLOCK_COOLDOWN_HOURS
+
+
 def check(platform, action, now=None):
     """İşlem şimdi yapılabilir mi? Geçmiş aktiviteye bakar."""
     now = now or datetime.now()
@@ -111,7 +118,7 @@ def check(platform, action, now=None):
 
     blocked_at, why = _last(platform, BLOCKED)
     if blocked_at:
-        until = blocked_at + timedelta(hours=settings.BLOCK_COOLDOWN_HOURS)
+        until = blocked_at + timedelta(hours=_cooldown_hours(why))
         if now < until:
             return Decision(False, f"{platform} {_fmt(blocked_at)} tarihinde uyarı verdi ({why}). Hesabı korumak için "
                                    f"{_fmt(until)} saatine kadar bot işlemleri durduruldu.",
@@ -161,9 +168,20 @@ def wait_turn(platform, action, max_wait=30, sleep=time.sleep):
 
 def is_blocked(platform, now=None):
     """Platform şu an engel bekleme süresinde mi?"""
-    blocked_at, _ = _last(platform, BLOCKED)
+    blocked_at, why = _last(platform, BLOCKED)
     now = now or datetime.now()
-    return bool(blocked_at and now < blocked_at + timedelta(hours=settings.BLOCK_COOLDOWN_HOURS))
+    return bool(blocked_at and now < blocked_at + timedelta(hours=_cooldown_hours(why)))
+
+
+def clear_block(platform):
+    """Kullanıcı hesabını doğruladıktan sonra yerel bekleme kaydını manuel temizler."""
+    conn = _connect()
+    try:
+        cur = conn.execute("DELETE FROM activity_log WHERE platform=? AND action=?", (platform.lower(), BLOCKED))
+        conn.commit()
+        return cur.rowcount
+    finally:
+        conn.close()
 
 
 def detect_block(text=None, http_status=None, url=None):
@@ -199,7 +217,7 @@ def done_recently(platform, action, detail_contains, days=30, now=None):
 
 
 def report_block(platform, reason, now=None):
-    log.warning("%s engel belirtisi: %s → %s saat bekleme", platform, reason, settings.BLOCK_COOLDOWN_HOURS)
+    log.warning("%s engel belirtisi: %s → %s saat bekleme", platform, reason, _cooldown_hours(reason))
     record(platform, BLOCKED, reason, now)
 
 

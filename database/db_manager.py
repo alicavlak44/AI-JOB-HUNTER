@@ -9,7 +9,8 @@ import pandas as pd
 from app.logger import get_logger
 from app import context
 from app import dbconn
-from app.settings import STATUS_NEW, STATUS_ANALYZED, STATUS_APPLY_UNVERIFIED, STATUS_APPLIED_VERIFIED
+from app.settings import (STATUS_NEW, STATUS_ANALYZED, STATUS_ANALYSIS_FAILED,
+                          STATUS_APPLY_UNVERIFIED, STATUS_APPLIED_VERIFIED)
 
 log = get_logger("db")
 
@@ -190,9 +191,15 @@ def delete_single_job(job_id):
         conn.execute("DELETE FROM jobs WHERE id=?", (job_id,))
 
 
-def delete_unprocessed_jobs():
+def delete_unprocessed_jobs(include_failed=True):
+    """Henüz analiz edilmemiş ('Yeni Bulundu') ve isteğe bağlı 'Analiz Hatası' ilanları siler; silinen sayıyı döner."""
+    _ensure_db()
     with _connect() as conn:
-        conn.execute("DELETE FROM jobs WHERE status=?", (STATUS_NEW,))
+        if include_failed:
+            cur = conn.execute("DELETE FROM jobs WHERE status IN (?, ?)", (STATUS_NEW, STATUS_ANALYSIS_FAILED))
+        else:
+            cur = conn.execute("DELETE FROM jobs WHERE status=?", (STATUS_NEW,))
+        return cur.rowcount
 
 
 def reset_database():

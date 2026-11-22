@@ -220,8 +220,10 @@ MAX_HOURLY_SCRAPES = int(os.getenv("MAX_HOURLY_SCRAPES", "8"))
 MAX_DAILY_INVITES = int(os.getenv("MAX_DAILY_INVITES", "15"))
 MAX_WEEKLY_INVITES = int(os.getenv("MAX_WEEKLY_INVITES", "80"))
 MIN_INVITE_INTERVAL_SEC = float(os.getenv("MIN_INVITE_INTERVAL_SEC", "20"))
-# Platform "olağandışı etkinlik / doğrulama / 429" gösterirse o platformda tüm bot işleri bu süre durur
+# Platform "olağandışı etkinlik / doğrulama / 999" gösterirse o platformda tüm bot işleri bu süre durur
 BLOCK_COOLDOWN_HOURS = float(os.getenv("BLOCK_COOLDOWN_HOURS", "24"))
+# Geçici hız sınırı (HTTP 429) için daha kısa yerel bekleme süresi (saat)
+RATE_LIMIT_COOLDOWN_HOURS = float(os.getenv("RATE_LIMIT_COOLDOWN_HOURS", "2"))
 
 # Tarayıcı otomasyonu GİZLENMEZ (Chrome "otomatik test yazılımı tarafından kontrol ediliyor" der); platform
 # doğrulama isterse bot durur (guard). Bu ayarlar sadece pencere düzeni ve dil içindir.

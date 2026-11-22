@@ -124,5 +124,15 @@ class ResetTimeTests(unittest.TestCase):
         self.assertIn("10 dk sonra (12:10)", d.reason)
 
 
+    def test_429_has_shorter_cooldown_and_clear_block(self):
+        guard.report_block("LinkedIn", "HTTP 429", now=NOW - timedelta(hours=1))
+        self.assertFalse(guard.check("LinkedIn", guard.SCRAPE, NOW).ok)
+        after_short = NOW + timedelta(hours=settings.RATE_LIMIT_COOLDOWN_HOURS)
+        self.assertTrue(guard.check("LinkedIn", guard.SCRAPE, after_short).ok)
+        # Manuel sıfırlama (hesap doğrulandıktan sonra)
+        self.assertGreaterEqual(guard.clear_block("LinkedIn"), 1)
+        self.assertTrue(guard.check("LinkedIn", guard.SCRAPE, NOW).ok)
+
+
 if __name__ == "__main__":
     unittest.main()

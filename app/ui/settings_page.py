@@ -164,11 +164,17 @@ def page_settings():
             if act != "engel":
                 rows.append({"Platform": plat, "İşlem": act, "Bugün": v["bugün"], "Bu hafta": v["hafta"]})
         if g["engel"]:
-            st.error(f"{plat}: {g['engel']}")
+            ec1, ec2 = st.columns([3.2, 1])
+            ec1.error(f"{plat}: {g['engel']}")
+            if ec2.button(f"Beklemeyi kaldır ({plat})", key=f"clr_blk_{plat}", width="stretch",
+                          help="Yalnızca platform hesabınızda kısıtlama olmadığını kontrol ettiyseniz kullanın"):
+                guard.clear_block(plat)
+                st.success(f"{plat} yerel bekleme kaydı temizlendi.")
+                st.rerun()
     st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
-    st.caption("Sınırlar .env dosyasından değiştirilebilir (MAX_DAILY_APPLICATIONS, MAX_DAILY_INVITES ...). "
-               "Platform uyarı verirse o platformda bot işlemleri "
-               f"{settings.BLOCK_COOLDOWN_HOURS:.0f} saat durur.")
+    st.caption(f"Geçici hız sınırında (HTTP 429) bekleme {settings.RATE_LIMIT_COOLDOWN_HOURS:.0f} saat, "
+               f"ciddi platform uyarısında (doğrulama/999) {settings.BLOCK_COOLDOWN_HOURS:.0f} saattir "
+               "(.env: RATE_LIMIT_COOLDOWN_HOURS, BLOCK_COOLDOWN_HOURS).")
 
     with st.expander("🪵 Loglar (son 200 satır)"):
         st.code(read_recent_logs(200) or "Henüz log yok.", language="text")

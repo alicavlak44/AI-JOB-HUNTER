@@ -267,8 +267,11 @@ def page_jobs():
                              help="Bilinen büyük/kurumsal şirketler ve büyük ölçek sinyalli ilanlar")
     fresh_only = t2.checkbox("🎓 Yeni mezun / junior / yetiştirilmek üzere", value=bool(u.get("fresh_grad_only")),
                              help="Yeni mezun, junior, yetiştirilmek üzere veya 0-2 yıl ilanları süzer")
-    if t3.button("🧹 İşlenmemişleri temizle", width="stretch"):
-        delete_unprocessed_jobs()
+    if t3.button("🧹 İşlenmemişleri temizle", width="stretch",
+                 help="Analiz edilmemiş ('Yeni Bulundu') ve 'Analiz Hatası' ilanları temizler; analiz edilmiş/başvurulmuş ilanlara dokunmaz"):
+        removed = delete_unprocessed_jobs(include_failed=True)
+        set_flash("jobs", "success" if removed else "info",
+                  f"✅ {removed} işlenmemiş/hatalı ilan temizlendi." if removed else "ℹ️ Temizlenecek işlenmemiş ilan yok.")
         st.rerun()
     view = jobs[jobs["Durum"].isin(status_filter)] if status_filter else jobs
     if search_q.strip():
@@ -290,6 +293,7 @@ def page_jobs():
         view = view[keep]
     view["Detay"] = view["details"].fillna("").str.len().map(lambda n: "✓" if n >= 200 else "—")
     st.caption(f"Gösterilen: **{len(view)}** / {len(jobs)} ilan")
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
     st.dataframe(view[["id", "Kaynak", "Ölçek", "Sınıf", "Pozisyon", "Şirket", "Şehir", "Detay", "ATS Uyum", "Durum", "url"]],
                  width="stretch", hide_index=True, height=320,
                  column_config={"url": st.column_config.LinkColumn("İlan", display_text="Aç")})
