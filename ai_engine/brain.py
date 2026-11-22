@@ -9,7 +9,8 @@ import re
 from datetime import datetime
 from functools import lru_cache
 
-from openai import OpenAI, APIConnectionError, APITimeoutError
+from openai import (OpenAI, APIConnectionError, APITimeoutError,
+                    AuthenticationError, BadRequestError, RateLimitError)
 from pypdf import PdfReader
 
 from ai_engine.cv_profile import build_profile
@@ -26,6 +27,7 @@ def _field_fit_text():
     from app import context
     labels = FIELD_FIT_LABELS if context.field() == "it" else _GENERIC_FIT
     return "\n".join(f"    {k} = {v}" for k, v in labels.items())
+from app import settings as _settings
 from app.logger import get_logger
 from app.settings import (
     LM_STUDIO_URL, LM_MODEL, LM_FAST_MODEL, LM_TIMEOUT, LM_REASONING_EFFORT,
@@ -36,30 +38,73 @@ log = get_logger("brain")
 
 
 class AIError(RuntimeError):
-    """LM Studio'ya ulaşılamadığında veya geçersiz cevap döndüğünde fırlatılır."""
+    """Yapay zekâ sunucusuna/API'sine ulaşılamadığında veya geçersiz cevap döndüğünde fırlatılır."""
+
+
+def _ai_cfg():
+    return _settings.ai_config()
 
 
 def _client():
-    return OpenAI(base_url=LM_STUDIO_URL, api_key="lm-studio", timeout=LM_TIMEOUT, max_retries=1)
+    cfg = _ai_cfg()
+    return OpenAI(base_url=cfg["url"], api_key=cfg["api_key"] or "lm-studio", timeout=LM_TIMEOUT, max_retries=1)
 
 
 def fast_model():
     """Etkileşimli ekranlar için model: LM_FAST_MODEL ayarlıysa o, değilse ana model."""
-    return LM_FAST_MODEL or LM_MODEL
+    return _ai_cfg()["fast_model"]
+
+
+def _model_matches(target, available):
+    """Gemini 'models/gemini-2.5-flash' gibi ön ek döndürdüğünde de modeli eşleştirir."""
+    t = (target or "").strip()
+    return any(m == t or m == f"models/{t}" or m.endswith("/" + t) for m in available)
 
 
 def check_lm_studio():
-    """(çalışıyor_mu, mesaj) döner. Dashboard'daki durum göstergesi için."""
+    """(çalışıyor_mu, mesaj) döner. Dashboard ve arka plan botlarındaki durum göstergesi için (yerel + bulut)."""
+    cfg = _ai_cfg()
+    label = cfg["label"]
+    target = cfg["model"]
+    if cfg["needs_key"] and not cfg["api_key"]:
+        return False, f"{label} için API anahtarı eksik (Profil ve Ayarlar → Yapay Zekâ Motoru)"
     try:
         models = [m.id for m in _client().models.list().data]
+    except AuthenticationError:
+        return False, f"{label} API anahtarı geçersiz veya yetkisiz"
     except (APIConnectionError, APITimeoutError):
+        if cfg["is_cloud"]:
+            return False, f"{label} sunucusuna ulaşılamadı ({cfg['url']})"
         return False, "LM Studio sunucusu kapalı (LM Studio → Developer → Start server)"
     except Exception as e:  # beklenmedik hata: logla ama dashboard'u çökertme
-        log.exception("LM Studio kontrolü başarısız")
-        return False, f"LM Studio hatası: {e}"
-    if LM_MODEL not in models:
-        return False, f"'{LM_MODEL}' yüklü değil. Yüklü modeller: {', '.join(models) or 'yok'}"
-    return True, f"Hazır: {LM_MODEL}"
+        log.exception("Yapay zekâ kontrolü başarısız")
+        return False, f"{label} hatası: {e}"
+    if models and not _model_matches(target, models):
+        preview = ", ".join(models[:8]) + ("..." if len(models) > 8 else "")
+        return False, f"'{target}' bulunamadı ({label}). Mevcut: {preview}"
+    return True, f"Hazır ({label}): {target}"
+
+
+check_ai = check_lm_studio
+
+
+def ping_ai():
+    """Gerçek bir kısa JSON yanıt testi yapar; (başarılı_mı, mesaj) döner."""
+    ok, msg = check_ai()
+    if not ok:
+        return False, msg
+    try:
+        res = _chat_json(
+            "Sadece istenen JSON'u döndür.",
+            "Hazır mısın?",
+            "ping",
+            {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"], "additionalProperties": False},
+            timeout=30,
+            max_tokens=30,
+        )
+        return True, f"{msg} · canlı JSON testi OK ({res})"
+    except AIError as e:
+        return False, str(e)
 
 
 # ---------------------------------------------------------------- CV okuma
@@ -106,26 +151,45 @@ def _cv_for_prompt():
 
 # ---------------------------------------------------------------- LLM çağrısı
 def _chat_json(system, user, schema_name, schema, temperature=0.2, model=None, timeout=None, max_tokens=None):
-    """Modelden şemaya uygun JSON ister ve dict döner. timeout/max_tokens: etkileşimli ekranlarda bekleme sınırı
-    (bilgisayar yavaşsa kullanıcı dakikalarca beklemesin; çağıran kural tabanlı yedeğe geçer)."""
+    """Modelden şemaya uygun JSON ister ve dict döner. Yerel LM Studio ve bulut OpenAI-uyumlu API'lerle çalışır."""
+    cfg = _ai_cfg()
+    if cfg["needs_key"] and not cfg["api_key"]:
+        raise AIError(f"{cfg['label']} için API anahtarı eksik (Profil ve Ayarlar → Yapay Zekâ Motoru).")
     client = _client() if timeout is None else _client().with_options(timeout=timeout, max_retries=0)
+    use_model = model or cfg["model"]
+    base_kwargs = dict(
+        model=use_model,
+        **({"reasoning_effort": cfg["reasoning_effort"]} if cfg["reasoning_effort"] else {}),
+        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+        temperature=temperature,
+        **({"max_tokens": max_tokens} if max_tokens else {}),
+    )
+    strict_fmt = {
+        "type": "json_schema",
+        "json_schema": {"name": schema_name, "strict": True, "schema": schema},
+    }
     try:
-        res = client.chat.completions.create(
-            model=model or LM_MODEL,
-            **({"reasoning_effort": LM_REASONING_EFFORT} if LM_REASONING_EFFORT else {}),
-            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-            temperature=temperature,
-            **({"max_tokens": max_tokens} if max_tokens else {}),
-            response_format={
-                "type": "json_schema",
-                "json_schema": {"name": schema_name, "strict": True, "schema": schema},
-            },
-        )
+        try:
+            res = client.chat.completions.create(**base_kwargs, response_format=strict_fmt)
+        except BadRequestError as e:
+            # Bazı bulut sağlayıcıları (ör. Groq/eski uç noktalar) strict json_schema'da 400 döner → json_object ile tekrar dene
+            log.info("strict json_schema reddedildi (%s); json_object deneniyor", str(e)[:120])
+            req_keys = ", ".join(schema.get("required") or list((schema.get("properties") or {}).keys()))
+            fallback_msgs = [
+                {"role": "system", "content": system + f"\nSadece geçerli JSON döndür. Gerekli anahtarlar: {req_keys}."},
+                {"role": "user", "content": user},
+            ]
+            res = client.chat.completions.create(**{**base_kwargs, "messages": fallback_msgs},
+                                                 response_format={"type": "json_object"})
+    except AuthenticationError as e:
+        raise AIError(f"{cfg['label']} API anahtarı geçersiz veya yetkisiz.") from e
+    except RateLimitError as e:
+        raise AIError(f"{cfg['label']} hız/kota sınırına ulaşıldı; biraz sonra tekrar deneyin.") from e
     except APITimeoutError as e:
-        raise AIError("Yerel model zamanında cevap vermedi (bilgisayar yoğun olabilir: açık uygulamaları azaltıp "
-                      "şarja takmayı deneyin).") from e
+        raise AIError("Yapay zekâ zamanında cevap vermedi; tekrar deneyin.") from e
     except APIConnectionError as e:
-        raise AIError("LM Studio'ya ulaşılamadı. Sunucu açık mı? (LM Studio → Developer → Start server)") from e
+        hint = cfg["url"] if cfg["is_cloud"] else "LM Studio → Developer → Start server"
+        raise AIError(f"{cfg['label']} sunucusuna ulaşılamadı ({hint}).") from e
 
     raw = res.choices[0].message.content or ""
     try:
@@ -379,7 +443,7 @@ DOĞRULANMIŞ GERÇEKLER (kodla hesaplandı, KESİN doğrudur — bunlarla ÇEL�
     with open(os.path.join(_out("reports"), f"{base}_analiz.json"), "w", encoding="utf-8") as f:
         json.dump({"job_id": job_id, "title": job_title, "company": company, "city": city,
                    "analyzed_at": datetime.now().isoformat(timespec="seconds"),
-                   "model": model or LM_MODEL, "had_description": has_desc,
+                   "model": model or _ai_cfg()["model"], "had_description": has_desc,
                    "llm_raw": data, "final": {k: v for k, v in result.items() if k != "cover_letter_path"}},
                   f, ensure_ascii=False, indent=2)
 

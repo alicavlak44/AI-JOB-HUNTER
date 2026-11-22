@@ -178,14 +178,16 @@ def _fetch_missing_details(limit=15):
 
 
 def _analyze_and_prepare(totals):
-    """LM Studio açıksa bekleyen ilanları analiz eder ve %75+ fırsatları hazırlar. Açık değilse False döner."""
-    from ai_engine.brain import check_lm_studio
+    """Yapay zekâ (yerel LM Studio veya bulut API) hazırsa bekleyen ilanları analiz eder ve %75+ fırsatları hazırlar."""
+    from ai_engine.brain import check_ai
     from ai_engine.cv_builder import build_tailored_cv
+    from app import settings as _settings
 
-    lm_ok, lm_msg = check_lm_studio()
+    lm_ok, lm_msg = check_ai()
     if not lm_ok:
-        log(f"LM Studio hazır değil ({lm_msg}); analiz bekliyor", state="lm kapalı")
+        log(f"Yapay zekâ hazır değil ({lm_msg}); analiz bekliyor", state="lm kapalı")
         return False
+    is_cloud = _settings.ai_config()["is_cloud"]
 
     jobs = get_all_jobs()
     pending = _prioritize_large(campaign.unanalyzed_jobs(jobs)).head(jobbot.MAX_ANALYZE_PER_CYCLE)
@@ -196,9 +198,11 @@ def _analyze_and_prepare(totals):
         if ok:
             analyzed_now += 1
             totals["analyzed_total"] += 1
+            if is_cloud:
+                time.sleep(3)  # ücretsiz bulut API RPM sınırına nazik aralık
         else:
             log(f"Analiz atlandı ({row['Şirket']}): {msg}")
-            if "LM Studio" in msg or "ulaşılamadı" in msg:
+            if any(k in msg for k in ("LM Studio", "ulaşılamadı", "yetkisiz", "kota", "API anahtarı")):
                 break
     if analyzed_now:
         log(f"{analyzed_now} ilan analiz edildi", **totals)

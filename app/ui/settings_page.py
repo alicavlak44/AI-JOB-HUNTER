@@ -5,18 +5,69 @@ import pandas as pd
 import streamlit as st
 
 from ai_engine import voice
-from ai_engine.brain import check_lm_studio, fast_model
+from ai_engine.brain import check_ai, ping_ai
 from app import context, guard, settings
 from app.logger import read_recent_logs
 from app.ui.common import header
 from database.db_manager import reset_database
 
 
+def _ai_motor_section():
+    cfg = settings.ai_config()
+    st.subheader("Yapay zekâ motoru (Bulut API / Yerel)")
+    st.caption(
+        "Yerel LM Studio yerine Google Gemini API, OpenAI, Groq veya OpenRouter bağlayabilirsiniz. "
+        "Değişiklik `.env` dosyasına kaydedilir (git'e girmez) ve arka plandaki İlan Avcısı yeniden başlatmadan algılar."
+    )
+    providers = list(settings.AI_PROVIDERS)
+    cur_idx = providers.index(cfg["provider"]) if cfg["provider"] in providers else 0
+    picked = st.selectbox(
+        "Sağlayıcı",
+        providers,
+        index=cur_idx,
+        format_func=lambda k: settings.AI_PROVIDERS[k]["label"],
+        key="ai_provider_sel",
+    )
+    preset = settings.AI_PROVIDERS[picked]
+    same = picked == cfg["provider"]
+    if picked == "gemini":
+        st.info(
+            "Google AI Studio'dan (**aistudio.google.com/apikey**) ücretsiz Gemini API anahtarı oluşturup aşağıya yapıştırın. "
+            "Not: Gemini web aboneliği ile AI Studio API anahtarı ayrıdır; ücretsiz katman günlük kullanım için fazlasıyla yeterlidir."
+        )
+    elif picked != "local":
+        st.caption("Not: Bulut API seçildiğinde CV ve ilan metinleri seçtiğiniz API sağlayıcısına gönderilir.")
+
+    c1, c2 = st.columns(2)
+    url = c1.text_input("API adresi (Base URL)", value=cfg["url"] if same else preset["url"], key=f"ai_url_{picked}")
+    model = c2.text_input("Ana model", value=cfg["model"] if same else preset["model"], key=f"ai_mod_{picked}")
+    c3, c4 = st.columns(2)
+    fast = c3.text_input("Hızlı model (CV Koçu / Mülakat — boşsa ana model)",
+                         value=(cfg["fast_model"] if cfg["fast_model"] != cfg["model"] else "") if same else preset["fast_model"],
+                         key=f"ai_fast_{picked}")
+    key_help = "Kayıtlı anahtar mevcut; değiştirmeyecekseniz boş bırakın." if cfg["api_key"] else "Sağlayıcıdan aldığınız API anahtarı"
+    api_key = c4.text_input("API Anahtarı" + (" (gerekli)" if preset["needs_key"] else " (yerelde boş)"),
+                            value="", type="password", placeholder="••••••••" if cfg["api_key"] else "",
+                            help=key_help, key=f"ai_key_{picked}")
+
+    b1, b2 = st.columns(2)
+    if b1.button("💾 Yapay zekâ ayarını kaydet", type="primary", width="stretch", key="ai_save_btn"):
+        key_to_save = api_key.strip() if api_key.strip() else ("" if picked == "local" else None)
+        settings.save_ai_env(picked, url=url, model=model, fast_model=fast, api_key=key_to_save)
+        st.success(f"Kaydedildi: {preset['label']} · {model or preset['model']}")
+        st.rerun()
+    if b2.button("🔌 Bağlantıyı ve JSON yanıtını test et", width="stretch", key="ai_ping_btn"):
+        with st.spinner("Test isteği gönderiliyor..."):
+            ok_p, msg_p = ping_ai()
+        (st.success if ok_p else st.error)(msg_p)
+
+
 def page_settings():
-    header("Ayarlar", "Sistem durumu, koruma limitleri ve bakım.")
-    ok, msg = check_lm_studio()
-    fast_note = f" · hızlı model: {fast_model()}" if settings.LM_FAST_MODEL else ""
-    (st.success if ok else st.error)(f"🧠 Yapay zeka (LM Studio): {msg} · model: {settings.LM_MODEL}{fast_note}")
+    header("Ayarlar", "Sistem durumu, yapay zekâ motoru, koruma limitleri ve bakım.")
+    cfg = settings.ai_config()
+    ok, msg = check_ai()
+    fast_note = f" · hızlı: {cfg['fast_model']}" if cfg["fast_model"] != cfg["model"] else ""
+    (st.success if ok else st.error)(f"🧠 Yapay zekâ: {msg}{fast_note}")
     tts_ok, stt_ok = voice.tts_available(), voice.stt_available()
     voice_msg = (f"Sesli mülakat: TTS ({voice.TTS_VOICE}) {'hazır' if tts_ok else 'yok'} · "
                  f"Whisper ({voice.WHISPER_MODEL}) {'hazır' if stt_ok else 'kurulu değil'}")
@@ -24,6 +75,9 @@ def page_settings():
     cv = context.cv_path()
     (st.success if os.path.exists(cv) else st.error)(
         f"📄 Ana CV: {os.path.relpath(cv, settings.BASE_DIR) if os.path.exists(cv) else 'yok — aşağıdan yükleyin'}")
+
+    with st.container(border=True):
+        _ai_motor_section()
 
     st.subheader("Profilim")
     u = context.user()
