@@ -198,7 +198,13 @@ BLACKLIST_KEYWORDS = [
     "depo", "kalite", "üretim", "plc", "scada", "otomasyon mühendisi",
     "elektrik pano", "hemşire", "hasta", "işitme", "mağaza", "kasiyer",
     "kurye", "şoför", "sekreter", "çağrı merkezi", "müşteri temsilcisi",
-    "part time", "stajyer", "satın alma", "insan kaynakları uzmanı"
+    "part time", "stajyer", "satın alma", "insan kaynakları uzmanı",
+    # Savunma/donanım/mekanik (BT altyapı dışı) mühendislik gürültüsü
+    "mekanik tasarım", "elektronik donanım tasarım", "elektronik donanım test",
+    "hava savunma", "güdüm kit", "elektro-optik", "elektronik harp",
+    "güç sistem bileşen", "prototip donanım", "gömülü gerçek zamanlı",
+    "aviyonik", "uçuş kontrol", "rf tasarım", "deniz haberleşme",
+    "ulaşım sistemleri mekanik",
 ]
 
 # Anti-Ban & Hesap Güvenliği Limitleri (LinkedIn ve Kariyer.net ban koruması)

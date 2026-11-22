@@ -19,12 +19,15 @@ log = get_logger("campaign")
 POSTPONED = "Ertelendi ⏳"
 
 
-def eligible_jobs(df, min_score=AUTO_APPLY_MIN_SCORE, only_large=False, exclude_small=False):
+def eligible_jobs(df, min_score=AUTO_APPLY_MIN_SCORE, only_large=False, exclude_small=False,
+                  allowed_roles=None, fresh_grad_only=False):
     """Analizi bitmiş, puanı yeterli, 'Başvurma' önerilmemiş ve henüz başvurulmamış ilanlar (puana göre sıralı).
-    only_large=True: yalnızca Büyük/Kurumsal şirketler; exclude_small=True: Küçük/Riskli sinyalli ilanları eler."""
+    only_large=True: yalnızca Büyük/Kurumsal şirketler; allowed_roles: izin verilen kadro sınıfları;
+    fresh_grad_only=True: yalnızca Yeni Mezun / Junior ilanlar."""
     if df is None or df.empty:
         return pd.DataFrame()
     from ai_engine.company_tier import TIER_LARGE, TIER_SMALL, classify_company
+    from ai_engine.role_class import classify_role, matches_role_prefs
     d = df[df["Durum"] == STATUS_ANALYZED].copy()
     d["puan"] = d["ATS Uyum"].map(parse_score)
     d = d[d["puan"].notna() & (d["puan"] >= min_score)]
@@ -33,12 +36,19 @@ def eligible_jobs(df, min_score=AUTO_APPLY_MIN_SCORE, only_large=False, exclude_
     if d.empty:
         return d
     tiers = [classify_company(r.get("Şirket"), r.get("details"), r.get("Pozisyon")) for _, r in d.iterrows()]
+    roles = [classify_role(r.get("Pozisyon"), r.get("details")) for _, r in d.iterrows()]
     d["olcek_tier"] = [t["tier"] for t in tiers]
     d["Ölçek"] = [t["badge"] for t in tiers]
+    d["sinif_tier"] = [rc["role_class"] for rc in roles]
+    d["Sınıf"] = [rc["display"] for rc in roles]
     if only_large:
         d = d[d["olcek_tier"] == TIER_LARGE]
     elif exclude_small:
         d = d[d["olcek_tier"] != TIER_SMALL]
+    if allowed_roles or fresh_grad_only:
+        keep = [matches_role_prefs(r.get("Pozisyon"), r.get("details"), allowed_roles, fresh_grad_only)
+                for _, r in d.iterrows()]
+        d = d[keep]
     # Büyük/Kurumsal şirketler aynı/yakın puanda öne çıksın
     d["_large_rank"] = (d["olcek_tier"] == TIER_LARGE).astype(int)
     return d.sort_values(["_large_rank", "puan"], ascending=[False, False]).drop(columns=["_large_rank"])

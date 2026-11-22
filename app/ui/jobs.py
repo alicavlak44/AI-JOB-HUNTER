@@ -4,9 +4,11 @@ import os
 
 import streamlit as st
 
-from ai_engine.brain import extract_positions_from_cv, AIError, check_ai
+from ai_engine.brain import extract_positions_from_cv, AIError, check_ai, read_cv_text
 from ai_engine.company_tier import TIER_LARGE, TIER_SMALL, classify_company
 from ai_engine.cv_builder import build_tailored_cv
+from ai_engine.role_class import (ALL_ROLE_CLASSES, ROLE_BADGE, classify_role,
+                                  detect_candidate_role_profile, matches_role_prefs)
 from app import campaign, context, followup, settings
 from app.logger import get_logger
 from app.settings import STATUS_APPLIED_VERIFIED
@@ -45,10 +47,14 @@ def _search():
                 all_now = get_all_jobs()
                 newly = all_now[~all_now["id"].isin(before_ids)]
                 only_big = bool(context.user().get("only_large_companies"))
+                u_roles = context.user().get("allowed_role_classes") or None
+                u_fresh = bool(context.user().get("fresh_grad_only"))
                 rows_to_score = []
                 for _, r in newly.iterrows():
                     ct = classify_company(r.get("Şirket"), r.get("details"), r.get("Pozisyon"))
                     if only_big and ct["tier"] == TIER_SMALL:
+                        continue
+                    if (u_roles or u_fresh) and not matches_role_prefs(r.get("Pozisyon"), r.get("details"), u_roles, u_fresh):
                         continue
                     rows_to_score.append(r)
                 if rows_to_score:
@@ -188,9 +194,10 @@ def _job_detail(jobs):
 def _details_panel(job_id, row):
     det = txt(row.get("details"))
     ct = classify_company(row.get("Şirket"), det, row.get("Pozisyon"))
+    rc = classify_role(row.get("Pozisyon"), det)
     c1, c2 = st.columns([3, 1])
-    c1.caption(f"Ölçek: **{ct['badge']}** ({ct['reason']}) · Kaynak: **{row['Kaynak']}** · Şehir: **{row['Şehir']}** · "
-               + (f"{len(det)} karakter detay" if det else "İlan detayı henüz çekilmedi"))
+    c1.caption(f"Sınıf: **{rc['display']}** · Ölçek: **{ct['badge']}** ({ct['reason']}) · Kaynak: **{row['Kaynak']}** · "
+               f"Şehir: **{row['Şehir']}** · " + (f"{len(det)} karakter detay" if det else "İlan detayı henüz çekilmedi"))
     if c2.button("🔄 Detayı çek", key=f"det_fetch_{job_id}", width="stretch"):
         with st.spinner("İlan metni çekiliyor..."):
             url = row.get("url") or ""
@@ -246,14 +253,21 @@ def page_jobs():
         return
 
     st.subheader(f"İlanlar ({len(jobs)})")
-    f1, f2, f3, f4 = st.columns([1.8, 1.6, 1.2, 1])
-    search_q = f1.text_input("Ara (şirket / pozisyon)", placeholder="Örn: Aselsan, Sistem, Linux")
+    u = context.user()
+    default_roles = u.get("allowed_role_classes") or detect_candidate_role_profile(read_cv_text())["suggested_classes"]
+    f1, f2, f3 = st.columns([1.6, 1.5, 1.8])
+    search_q = f1.text_input("Ara (şirket / pozisyon)", placeholder="Örn: Aselsan, Sistem, Tekniker")
     status_filter = f2.multiselect("Duruma göre süz", sorted(jobs["Durum"].dropna().unique()), placeholder="Tümü")
-    f3.markdown("<br>", unsafe_allow_html=True)
-    only_large = f3.checkbox("🏢 Sadece büyük/kurumsal", value=bool(context.user().get("only_large_companies")),
+    role_filter = f3.multiselect("Kadro sınıfı (Tekniker / Uzman / Mühendis)", ALL_ROLE_CLASSES,
+                                 default=[r for r in default_roles if r in ALL_ROLE_CLASSES],
+                                 format_func=lambda r: f"{ROLE_BADGE[r]} ({r})",
+                                 placeholder="Tümü (Mühendis dahil)")
+    t1, t2, t3 = st.columns([1.4, 1.5, 1])
+    only_large = t1.checkbox("🏢 Sadece büyük/kurumsal şirketler", value=bool(u.get("only_large_companies")),
                              help="Bilinen büyük/kurumsal şirketler ve büyük ölçek sinyalli ilanlar")
-    f4.markdown("<br>", unsafe_allow_html=True)
-    if f4.button("🧹 İşlenmemişleri temizle", width="stretch"):
+    fresh_only = t2.checkbox("🎓 Yeni mezun / junior / yetiştirilmek üzere", value=bool(u.get("fresh_grad_only")),
+                             help="Yeni mezun, junior, yetiştirilmek üzere veya 0-2 yıl ilanları süzer")
+    if t3.button("🧹 İşlenmemişleri temizle", width="stretch"):
         delete_unprocessed_jobs()
         st.rerun()
     view = jobs[jobs["Durum"].isin(status_filter)] if status_filter else jobs
@@ -264,13 +278,21 @@ def page_jobs():
         view = view[mask]
     view = view.copy()
     tiers = [classify_company(r.get("Şirket"), r.get("details"), r.get("Pozisyon")) for _, r in view.iterrows()]
+    roles = [classify_role(r.get("Pozisyon"), r.get("details")) for _, r in view.iterrows()]
     view["_tier"] = [t["tier"] for t in tiers]
     view["Ölçek"] = [t["badge"] for t in tiers]
+    view["Sınıf"] = [rc["display"] for rc in roles]
     if only_large:
         view = view[view["_tier"] == TIER_LARGE]
+    if role_filter or fresh_only:
+        keep = [matches_role_prefs(r.get("Pozisyon"), r.get("details"), role_filter or None, fresh_only)
+                for _, r in view.iterrows()]
+        view = view[keep]
     view["Detay"] = view["details"].fillna("").str.len().map(lambda n: "✓" if n >= 200 else "—")
-    st.dataframe(view[["id", "Kaynak", "Ölçek", "Pozisyon", "Şirket", "Şehir", "Detay", "ATS Uyum", "Durum", "url"]], width="stretch",
-                 hide_index=True, height=300, column_config={"url": st.column_config.LinkColumn("İlan", display_text="Aç")})
+    st.caption(f"Gösterilen: **{len(view)}** / {len(jobs)} ilan")
+    st.dataframe(view[["id", "Kaynak", "Ölçek", "Sınıf", "Pozisyon", "Şirket", "Şehir", "Detay", "ATS Uyum", "Durum", "url"]],
+                 width="stretch", hide_index=True, height=320,
+                 column_config={"url": st.column_config.LinkColumn("İlan", display_text="Aç")})
 
     st.subheader("Seçili ilan")
     with st.container(border=True):

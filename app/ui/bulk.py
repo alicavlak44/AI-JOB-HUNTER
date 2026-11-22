@@ -35,19 +35,31 @@ def page_bulk():
             st.rerun()
 
     step("2️⃣ Başvurulacak ilanları seç")
-    s1, s2 = st.columns([2, 1])
+    from ai_engine.brain import read_cv_text
+    from ai_engine.role_class import ALL_ROLE_CLASSES, ROLE_BADGE, detect_candidate_role_profile
+    u = context.user()
+    default_roles = u.get("allowed_role_classes") or detect_candidate_role_profile(read_cv_text())["suggested_classes"]
+    s1, s2 = st.columns([1.4, 1.8])
     min_score = s1.slider("En düşük uyum puanı", 0, 100, AUTO_APPLY_MIN_SCORE, 5,
                           help="Düşük puanlı ilanlara başvurmak görüntülenme oranınızı düşürür.")
-    s2.markdown("<br>", unsafe_allow_html=True)
-    only_large = s2.checkbox("🏢 Sadece büyük/kurumsal şirketler",
-                             value=bool(context.user().get("only_large_companies")),
+    role_filter = s2.multiselect("Kadro sınıfı (Tekniker / Uzman / Mühendis)", ALL_ROLE_CLASSES,
+                                 default=[r for r in default_roles if r in ALL_ROLE_CLASSES],
+                                 format_func=lambda r: f"{ROLE_BADGE[r]} ({r})",
+                                 placeholder="Tümü")
+    c1, c2 = st.columns(2)
+    only_large = c1.checkbox("🏢 Sadece büyük/kurumsal şirketler",
+                             value=bool(u.get("only_large_companies")),
                              help="Küçük, butik veya ölçeği doğrulanmayan şirketleri gizler.")
-    cand = campaign.eligible_jobs(jobs, min_score, only_large=only_large, exclude_small=True)
+    fresh_only = c2.checkbox("🎓 Sadece yeni mezun / junior ilanlar",
+                             value=bool(u.get("fresh_grad_only")),
+                             help="Yeni mezun, junior veya yetiştirilmek üzere ilanları gösterir.")
+    cand = campaign.eligible_jobs(jobs, min_score, only_large=only_large, exclude_small=True,
+                                  allowed_roles=role_filter or None, fresh_grad_only=fresh_only)
     if cand.empty:
-        st.info(f"Uyum puanı %{min_score}+ olan, başvurulmamış ilan yok. Önce analiz edin, eşiği düşürün ya da ölçek filtresini genişletin.")
+        st.info(f"Uyum puanı %{min_score}+ olan, seçili sınıf/ölçek filtresine uygun başvurulmamış ilan yok.")
     else:
         all_on = st.checkbox(f"✅ Tümünü seç ({len(cand)} ilan)", key=f"bulk_all_{hash(tuple(cand['id']))}")
-        table = cand[["id", "Kaynak", "Ölçek", "Şirket", "Pozisyon", "Şehir", "puan", "recommendation"]].rename(
+        table = cand[["id", "Kaynak", "Ölçek", "Sınıf", "Şirket", "Pozisyon", "Şehir", "puan", "recommendation"]].rename(
             columns={"puan": "Puan", "recommendation": "Öneri"})
         table.insert(0, "Onay", all_on)
         edited = st.data_editor(table, hide_index=True, width="stretch",

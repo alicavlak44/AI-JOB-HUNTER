@@ -225,11 +225,20 @@ def extract_positions_from_cv():
     cv = _cv_for_prompt()
     if not cv:
         raise AIError("CV bulunamadı — Profil ve Ayarlar sayfasından CV yükleyin")
+    from ai_engine.role_class import detect_candidate_role_profile
+    rp = detect_candidate_role_profile(cv)
+    role_rule = (
+        "Aday MÜHENDİS DEĞİLDİR (ön lisans/tekniker/uzman). Kesinlikle 'Mühendis' veya 'Engineer' içeren unvan ÖNERME; "
+        "yalnızca Tekniker, Uzman, Yönetici, Administrator, Specialist unvanları üret."
+        if not rp["is_engineer"] else
+        "Adayın mühendislik eğitimi/deneyimi var; uygun mühendis ve uzman unvanlarını çıkarabilirsin."
+    )
     data = _chat_json(
         system=f"Sen deneyimli bir işe alım uzmanısın ({_field_label()}). Sadece istenen JSON'u döndür.",
         user=(
             f"Adayın CV'si:\n{cv}\n\n"
-            "Bu adayın deneyimine en uygun 6 iş ilanı arama unvanını çıkar. "
+            f"ÖNEMLİ KURAL: {role_rule}\n"
+            "Bu adayın deneyimine ve eğitim düzeyine en uygun 6 iş ilanı arama unvanını çıkar. "
             "Türkiye'deki iş sitelerinde (Kariyer.net, LinkedIn) gerçekten aranan, "
             "hem Türkçe hem İngilizce popüler unvanlar olsun."
         ),
@@ -237,6 +246,8 @@ def extract_positions_from_cv():
         schema=_POSITIONS_SCHEMA,
     )
     positions = [p.strip() for p in data.get("positions", []) if len(p.strip()) > 2]
+    if not rp["is_engineer"]:
+        positions = [p for p in positions if not re.search(r"mühendis|engineer", p, re.IGNORECASE)]
     log.info("CV'den çıkarılan pozisyonlar: %s", positions)
     return positions[:6]
 

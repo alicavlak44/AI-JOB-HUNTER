@@ -135,12 +135,23 @@ def run_cycle(cycle_idx, totals):
 
 
 def _prioritize_large(df):
-    """Büyük/kurumsal şirketleri kuyruğun başına alır; kullanıcı yalnızca büyük şirket istiyorsa küçükleri eler."""
+    """Büyük/kurumsal şirketleri kuyruğun başına alır; kadro sınıfı (Tekniker/Uzman/Mühendis) ve yeni mezun
+    tercihine uymayan ilanları kuyruktan eler (API kotası boşa harcanmaz)."""
     if df is None or df.empty:
         return df
     from ai_engine.company_tier import TIER_LARGE, TIER_SMALL, classify_company
-    only_large = bool(context.user().get("only_large_companies"))
+    from ai_engine.role_class import matches_role_prefs
+    u = context.user()
+    only_large = bool(u.get("only_large_companies"))
+    allowed_roles = u.get("allowed_role_classes") or None
+    fresh_only = bool(u.get("fresh_grad_only"))
     d = df.copy()
+    if allowed_roles or fresh_only:
+        keep = [matches_role_prefs(r.get("Pozisyon"), r.get("details"), allowed_roles, fresh_only)
+                for _, r in d.iterrows()]
+        d = d[keep]
+        if d.empty:
+            return d
     tiers = [classify_company(r.get("Şirket"), r.get("details"), r.get("Pozisyon"))["tier"] for _, r in d.iterrows()]
     d["_tier"] = tiers
     if only_large:

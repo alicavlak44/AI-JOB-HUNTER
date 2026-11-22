@@ -134,11 +134,12 @@ def recent_log(slug, lines=15):
     return keep[-lines:]
 
 
-def ready_opportunities(jobs_df, min_score=PREP_MIN_SCORE, only_large=False):
-    """Başvurulmamış, puanı min_score+ olan fırsatlar (ön yazı / özel CV ve şirket ölçeği bilgisiyle)."""
+def ready_opportunities(jobs_df, min_score=PREP_MIN_SCORE, only_large=False, allowed_roles=None, fresh_grad_only=False):
+    """Başvurulmamış, puanı min_score+ olan fırsatlar (ön yazı / özel CV, şirket ölçeği ve kadro sınıfıyla)."""
     if jobs_df is None or jobs_df.empty:
         return []
     from ai_engine.company_tier import TIER_LARGE, TIER_SMALL, classify_company
+    from ai_engine.role_class import classify_role, matches_role_prefs
     d = jobs_df[jobs_df["Durum"] == STATUS_ANALYZED].copy()
     if d.empty:
         return []
@@ -151,6 +152,10 @@ def ready_opportunities(jobs_df, min_score=PREP_MIN_SCORE, only_large=False):
             continue
         if ct["tier"] == TIER_SMALL:
             continue
+        if (allowed_roles or fresh_grad_only) and not matches_role_prefs(
+                r.get("Pozisyon"), r.get("details"), allowed_roles, fresh_grad_only):
+            continue
+        rc = classify_role(r.get("Pozisyon"), r.get("details"))
         cv_path = r.get("tailored_cv_path")
         has_cv = isinstance(cv_path, str) and bool(cv_path.strip()) and os.path.exists(cv_path)
         has_cl = isinstance(r.get("cover_letter"), str) and len(r["cover_letter"].strip()) > 50
@@ -158,6 +163,7 @@ def ready_opportunities(jobs_df, min_score=PREP_MIN_SCORE, only_large=False):
             "id": int(r["id"]),
             "Puan": int(r["_puan"]),
             "Ölçek": ct["badge"],
+            "Sınıf": rc["display"],
             "Şirket": r["Şirket"],
             "Pozisyon": r["Pozisyon"],
             "Kaynak": r["Kaynak"],

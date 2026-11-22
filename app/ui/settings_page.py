@@ -90,8 +90,22 @@ def page_settings():
                              format_func=context.FIELDS.get)
         city = c3.text_input("Şehir", u.get("city", ""))
         targets = st.text_area("Aranacak pozisyonlar (her satır bir unvan)", "\n".join(u.get("targets", [])))
-        only_large = st.checkbox("🏢 Sadece büyük / kurumsal şirketlere odaklan (küçük ve riskli şirketleri ele)",
-                                 value=bool(u.get("only_large_companies")))
+        from ai_engine.brain import read_cv_text
+        from ai_engine.role_class import ALL_ROLE_CLASSES, ROLE_BADGE, detect_candidate_role_profile
+        rp = detect_candidate_role_profile(read_cv_text())
+        st.caption(f"CV'nizden algılanan kadro profili: **{rp['summary']}**")
+        cur_roles = u.get("allowed_role_classes") or rp["suggested_classes"]
+        allowed_roles = st.multiselect(
+            "Hedef kadro sınıfları (Mühendis değilseniz 'Mühendis'i seçili bırakmayın)",
+            ALL_ROLE_CLASSES,
+            default=[r for r in cur_roles if r in ALL_ROLE_CLASSES],
+            format_func=lambda r: f"{ROLE_BADGE[r]} ({r})",
+        )
+        f_col1, f_col2 = st.columns(2)
+        only_large = f_col1.checkbox("🏢 Sadece büyük / kurumsal şirketlere odaklan (küçük/riskli şirketleri ele)",
+                                     value=bool(u.get("only_large_companies")))
+        fresh_only = f_col2.checkbox("🎓 Yeni mezun / junior / yetiştirilmek üzere ilanlar",
+                                     value=bool(u.get("fresh_grad_only")))
         new_pin = st.text_input("Yeni PIN (boş bırakırsanız değişmez; '-' yazarsanız PIN kaldırılır)", type="password")
         new_cv = st.file_uploader("Ana CV'yi değiştir (PDF)", type=["pdf"])
         st.markdown("**📝 Form cevaplarım** — başvuru formlarında sık sorulan, CV'de olmayan sorular. "
@@ -104,7 +118,9 @@ def page_settings():
         if st.form_submit_button("Kaydet", type="primary"):
             upd = dict(name=name.strip() or u["name"], field=field, city=city,
                        targets=[t.strip() for t in targets.splitlines() if t.strip()],
+                       allowed_role_classes=allowed_roles,
                        only_large_companies=only_large,
+                       fresh_grad_only=fresh_only,
                        form_answers={k: v.strip() for k, v in fa.items() if v.strip()})
             if new_pin and new_pin != "-" and len(new_pin) < 4:
                 st.error("PIN en az 4 hane olmalı.")

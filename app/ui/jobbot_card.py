@@ -47,7 +47,13 @@ def jobbot_card():
             st.toast(msg)
             st.rerun()
 
-        opps = jobbot.ready_opportunities(get_all_jobs(), only_large=bool(context.user().get("only_large_companies")))
+        u = context.user()
+        opps = jobbot.ready_opportunities(
+            get_all_jobs(),
+            only_large=bool(u.get("only_large_companies")),
+            allowed_roles=u.get("allowed_role_classes") or None,
+            fresh_grad_only=bool(u.get("fresh_grad_only")),
+        )
         m = st.columns(4)
         m[0].metric("Bulunan ilan", s["found_total"])
         m[1].metric("Analiz edilen", s["analyzed_total"])
