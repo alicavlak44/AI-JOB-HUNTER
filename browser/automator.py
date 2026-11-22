@@ -36,27 +36,55 @@ BROWSER_LOCK_WAIT = float(os.getenv("BROWSER_LOCK_WAIT", "90"))
 @contextmanager
 def _profile_lock(profile_dir, wait=None):
     """Aynı Chrome profilini iki süreç aynı anda açamaz (panel + arka plan ağ botu). Sıra bekler;
-    süre dolarsa anlaşılır bir hata verir."""
-    import fcntl
+    süre dolarsa anlaşılır bir hata verir. Hem macOS/Linux (fcntl) hem Windows (msvcrt) uyumludur."""
     import time as _time
     wait = BROWSER_LOCK_WAIT if wait is None else wait
     os.makedirs(os.path.dirname(os.path.abspath(profile_dir)) or ".", exist_ok=True)
-    fh = open(os.path.abspath(profile_dir).rstrip("/") + ".lock", "w")
+    lock_path = os.path.abspath(profile_dir).rstrip("\\/") + ".lock"
+    fh = open(lock_path, "a+")
     deadline = _time.time() + wait
+    locked = False
     try:
-        while True:
-            try:
-                fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except BlockingIOError:
-                if _time.time() >= deadline:
-                    raise PlaywrightError("Tarayıcı şu an başka bir işlemde kullanılıyor (arka plandaki LinkedIn ağ "
-                                          "botu olabilir). Bir iki dakika sonra tekrar deneyin.")
-                _time.sleep(2)
+        if os.name == "nt":
+            import msvcrt
+            fh.seek(0)
+            if not fh.read(1):
+                fh.write("0")
+                fh.flush()
+            while True:
+                try:
+                    fh.seek(0)
+                    msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+                    locked = True
+                    break
+                except OSError:
+                    if _time.time() >= deadline:
+                        raise PlaywrightError("Tarayıcı şu an başka bir işlemde kullanılıyor (arka plandaki LinkedIn ağ "
+                                              "botu olabilir). Bir iki dakika sonra tekrar deneyin.")
+                    _time.sleep(2)
+        else:
+            import fcntl
+            while True:
+                try:
+                    fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    locked = True
+                    break
+                except BlockingIOError:
+                    if _time.time() >= deadline:
+                        raise PlaywrightError("Tarayıcı şu an başka bir işlemde kullanılıyor (arka plandaki LinkedIn ağ "
+                                              "botu olabilir). Bir iki dakika sonra tekrar deneyin.")
+                    _time.sleep(2)
         yield
     finally:
         try:
-            fcntl.flock(fh, fcntl.LOCK_UN)
+            if locked:
+                if os.name == "nt":
+                    import msvcrt
+                    fh.seek(0)
+                    msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(fh, fcntl.LOCK_UN)
         finally:
             fh.close()
 

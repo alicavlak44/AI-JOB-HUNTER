@@ -124,10 +124,10 @@ def pid_alive(pid):
     try:
         os.kill(int(pid), 0)
         return True
-    except (ProcessLookupError, ValueError):
-        return False
     except PermissionError:
         return True  # süreç var, başka kullanıcıya ait
+    except (ProcessLookupError, ValueError, OSError, SystemError):
+        return False
 
 
 def running_pid(slug):
@@ -179,7 +179,7 @@ def stop(slug):
         return False, "Bot zaten çalışmıyor."
     try:
         os.kill(pid, signal.SIGTERM)  # bot SIGTERM'de durumunu 'durduruldu' yazıp çıkar; caffeinate de kapanır
-    except ProcessLookupError:
+    except (ProcessLookupError, OSError):
         pass
     write_state(slug, state="durduruldu", pid=None)
     return True, "Bot durduruldu."

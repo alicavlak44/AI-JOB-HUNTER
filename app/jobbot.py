@@ -56,10 +56,10 @@ def pid_alive(pid):
     try:
         os.kill(int(pid), 0)
         return True
-    except (ProcessLookupError, ValueError):
-        return False
     except PermissionError:
         return True
+    except (ProcessLookupError, ValueError, OSError, SystemError):
+        return False
 
 
 def _process_user(pid):
@@ -121,7 +121,7 @@ def stop(slug):
         return False, "İlan avcısı zaten çalışmıyor."
     try:
         os.kill(pid, signal.SIGTERM)
-    except ProcessLookupError:
+    except (ProcessLookupError, OSError):
         pass
     write_state(slug, state="durduruldu", pid=None)
     return True, "Otomatik ilan avcısı durduruldu."

@@ -34,20 +34,24 @@ cd AI-JOB-HUNTER
 
 ### 2. Sanal ortamı kurun ve paketleri yükleyin
 
+**Windows (Tek Tıkla — En Kolay Yol):**
+- Klasördeki **`windows_kurulum.bat`** dosyasına çift tıklayın (sanal ortam, paketler, Chromium ve `.env` otomatik kurulur).
+- Uygulamayı açmak için **`windows_baslat.bat`**, GitHub'dan güncellemek için **`windows_guncelle.bat`** dosyasına çift tıklayın.
+
+**Windows (Manuel — PowerShell):**
+```powershell
+python -m venv venv
+.\venv\Scripts\pip install -r requirements.txt
+.\venv\Scripts\playwright install chromium
+copy .env.example .env
+```
+
 **macOS (Terminal):**
 ```bash
 python3 -m venv venv
 venv/bin/pip install -r requirements.txt
 venv/bin/playwright install chromium
 cp .env.example .env
-```
-
-**Windows (PowerShell):**
-```powershell
-python -m venv venv
-.\venv\Scripts\pip install -r requirements.txt
-.\venv\Scripts\playwright install chromium
-copy .env.example .env
 ```
 *(Not: `mlx-whisper` yalnızca Apple Silicon Mac'lerde otomatik kurulur; Windows/Intel Mac'lerde atlanır ve Mülakat Provası yazılı modda sorunsuz çalışır.)*
 

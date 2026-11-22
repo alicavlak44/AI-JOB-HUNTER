@@ -35,19 +35,27 @@ alabilmek için `git clone` önerilir.)
 3. KURULUM ADIMLARI
 --------------------------------------------------------------------------------
 
-A) macOS (Terminal):
-    python3 -m venv venv
-    venv/bin/pip install --upgrade pip
-    venv/bin/pip install -r requirements.txt
-    venv/bin/playwright install chromium
-    cp .env.example .env
+A) Windows — EN KOLAY YOL (Tek Tıkla Otomatik Kurulum):
+    1. İndirdiğiniz AI-JOB-HUNTER klasörünü açın.
+    2. `windows_kurulum.bat` dosyasına çift tıklayın (sanal ortam, paketler,
+       Playwright Chromium ve `.env` dosyasını otomatik kurar).
+    3. Kurulum bitince `windows_baslat.bat` dosyasına çift tıklayarak başlatın.
+    4. İleride yeni güncellemeleri almak için `windows_guncelle.bat` dosyasına
+       çift tıklamanız yeterlidir.
 
-B) Windows (PowerShell):
+B) Windows — Manuel (PowerShell / Komut İstemi ile):
     python -m venv venv
     .\venv\Scripts\pip install --upgrade pip
     .\venv\Scripts\pip install -r requirements.txt
     .\venv\Scripts\playwright install chromium
     copy .env.example .env
+
+C) macOS (Terminal):
+    python3 -m venv venv
+    venv/bin/pip install --upgrade pip
+    venv/bin/pip install -r requirements.txt
+    venv/bin/playwright install chromium
+    cp .env.example .env
 
 (Not: mlx-whisper sadece Apple Silicon Mac'lerde otomatik kurulur. Windows veya
 Intel Mac'lerde sorunsuz atlanır; Mülakat Provası yazılı olarak çalışır.)
@@ -79,11 +87,14 @@ Yöntem 2 — Yerel Model (LM Studio — internetsiz / ücretsiz):
 5. UYGULAMAYI BAŞLATMA
 --------------------------------------------------------------------------------
 
-macOS:
-    venv/bin/streamlit run app/dashboard.py
+Windows (Kolay Yol):
+    `windows_baslat.bat` dosyasına çift tıklayın.
 
 Windows (PowerShell):
     .\venv\Scripts\streamlit run app/dashboard.py
+
+macOS:
+    venv/bin/streamlit run app/dashboard.py
 
 Tarayıcıda otomatik olarak http://localhost:8501 adresi açılacaktır.
 
