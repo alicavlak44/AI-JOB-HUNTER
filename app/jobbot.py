@@ -134,10 +134,11 @@ def recent_log(slug, lines=15):
     return keep[-lines:]
 
 
-def ready_opportunities(jobs_df, min_score=PREP_MIN_SCORE):
-    """Başvurulmamış, puanı min_score+ olan fırsatlar (ön yazı / özel CV hazırlık bilgisiyle)."""
+def ready_opportunities(jobs_df, min_score=PREP_MIN_SCORE, only_large=False):
+    """Başvurulmamış, puanı min_score+ olan fırsatlar (ön yazı / özel CV ve şirket ölçeği bilgisiyle)."""
     if jobs_df is None or jobs_df.empty:
         return []
+    from ai_engine.company_tier import TIER_LARGE, TIER_SMALL, classify_company
     d = jobs_df[jobs_df["Durum"] == STATUS_ANALYZED].copy()
     if d.empty:
         return []
@@ -145,19 +146,29 @@ def ready_opportunities(jobs_df, min_score=PREP_MIN_SCORE):
     d = d[d["_puan"].notna() & (d["_puan"] >= min_score)].sort_values("_puan", ascending=False)
     out = []
     for _, r in d.iterrows():
+        ct = classify_company(r.get("Şirket"), r.get("details"), r.get("Pozisyon"))
+        if only_large and ct["tier"] != TIER_LARGE:
+            continue
+        if ct["tier"] == TIER_SMALL:
+            continue
         cv_path = r.get("tailored_cv_path")
         has_cv = isinstance(cv_path, str) and bool(cv_path.strip()) and os.path.exists(cv_path)
         has_cl = isinstance(r.get("cover_letter"), str) and len(r["cover_letter"].strip()) > 50
         out.append({
             "id": int(r["id"]),
             "Puan": int(r["_puan"]),
+            "Ölçek": ct["badge"],
             "Şirket": r["Şirket"],
             "Pozisyon": r["Pozisyon"],
             "Kaynak": r["Kaynak"],
             "Ön yazı": "Hazır" if has_cl else "Bekliyor",
             "Özel CV": "Hazır" if has_cv else "Bekliyor",
             "İlan": r.get("url", ""),
+            "_large": 1 if ct["tier"] == TIER_LARGE else 0,
         })
+    out.sort(key=lambda x: (-x["_large"], -x["Puan"]))
+    for item in out:
+        item.pop("_large", None)
     return out
 
 

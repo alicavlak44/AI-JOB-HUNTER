@@ -134,6 +134,21 @@ def run_cycle(cycle_idx, totals):
         log("LinkedIn senkron:", r.get("summary") or r.get("error") or "tamamlandı")
 
 
+def _prioritize_large(df):
+    """Büyük/kurumsal şirketleri kuyruğun başına alır; kullanıcı yalnızca büyük şirket istiyorsa küçükleri eler."""
+    if df is None or df.empty:
+        return df
+    from ai_engine.company_tier import TIER_LARGE, TIER_SMALL, classify_company
+    only_large = bool(context.user().get("only_large_companies"))
+    d = df.copy()
+    tiers = [classify_company(r.get("Şirket"), r.get("details"), r.get("Pozisyon"))["tier"] for _, r in d.iterrows()]
+    d["_tier"] = tiers
+    if only_large:
+        d = d[d["_tier"] != TIER_SMALL]
+    d["_rank"] = d["_tier"].map({TIER_LARGE: 2, "Orta / İncele": 1, TIER_SMALL: 0}).fillna(1)
+    return d.sort_values("_rank", ascending=False).drop(columns=["_tier", "_rank"])
+
+
 def _fetch_missing_details(limit=15):
     """Detay metni eksik (200 karakter altı) ilanların tam açıklamasını sessizce çeker ve kaydeder."""
     from browser.automator import fetch_job_description_browser
@@ -143,7 +158,7 @@ def _fetch_missing_details(limit=15):
     jobs = get_all_jobs()
     if jobs.empty:
         return 0
-    missing = jobs[jobs["details"].fillna("").str.len() < 200].head(limit)
+    missing = _prioritize_large(jobs[jobs["details"].fillna("").str.len() < 200]).head(limit)
     fetched = 0
     for _, row in missing.iterrows():
         url = row.get("url") or ""
@@ -173,7 +188,7 @@ def _analyze_and_prepare(totals):
         return False
 
     jobs = get_all_jobs()
-    pending = campaign.unanalyzed_jobs(jobs).head(jobbot.MAX_ANALYZE_PER_CYCLE)
+    pending = _prioritize_large(campaign.unanalyzed_jobs(jobs)).head(jobbot.MAX_ANALYZE_PER_CYCLE)
     analyzed_now = 0
     for _, row in pending.iterrows():
         log(f"Analiz ediliyor: {row['Şirket']} — {row['Pozisyon']}", state="çalışıyor")
@@ -188,15 +203,21 @@ def _analyze_and_prepare(totals):
     if analyzed_now:
         log(f"{analyzed_now} ilan analiz edildi", **totals)
 
+    from ai_engine.company_tier import TIER_LARGE, TIER_SMALL, classify_company
+    only_large = bool(context.user().get("only_large_companies"))
     jobs = get_all_jobs()
     high = jobs[jobs["Durum"] == STATUS_ANALYZED].copy()
     if not high.empty:
         high["_p"] = high["ATS Uyum"].map(parse_score)
         high = high[high["_p"].notna() & (high["_p"] >= jobbot.PREP_MIN_SCORE)].sort_values("_p", ascending=False)
+        high = _prioritize_large(high)
         prepared_names = []
         for _, row in high.iterrows():
             if len(prepared_names) >= jobbot.MAX_PREP_PER_CYCLE:
                 break
+            ct = classify_company(row.get("Şirket"), row.get("details"), row.get("Pozisyon"))
+            if ct["tier"] == TIER_SMALL or (only_large and ct["tier"] != TIER_LARGE):
+                continue
             job_id = int(row["id"])
             has_cl = isinstance(row.get("cover_letter"), str) and len(row["cover_letter"].strip()) > 50
             cv_path = row.get("tailored_cv_path")

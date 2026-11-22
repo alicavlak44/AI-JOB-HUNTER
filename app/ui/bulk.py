@@ -2,7 +2,7 @@
 import pandas as pd
 import streamlit as st
 
-from app import campaign, guard
+from app import campaign, context, guard
 from app.settings import AUTO_APPLY_MIN_SCORE, MAX_DAILY_APPLICATIONS
 from app.ui.common import header, step
 from app.ui.jobbot_card import jobbot_card
@@ -35,14 +35,19 @@ def page_bulk():
             st.rerun()
 
     step("2️⃣ Başvurulacak ilanları seç")
-    min_score = st.slider("En düşük uyum puanı", 0, 100, AUTO_APPLY_MIN_SCORE, 5,
+    s1, s2 = st.columns([2, 1])
+    min_score = s1.slider("En düşük uyum puanı", 0, 100, AUTO_APPLY_MIN_SCORE, 5,
                           help="Düşük puanlı ilanlara başvurmak görüntülenme oranınızı düşürür.")
-    cand = campaign.eligible_jobs(jobs, min_score)
+    s2.markdown("<br>", unsafe_allow_html=True)
+    only_large = s2.checkbox("🏢 Sadece büyük/kurumsal şirketler",
+                             value=bool(context.user().get("only_large_companies")),
+                             help="Küçük, butik veya ölçeği doğrulanmayan şirketleri gizler.")
+    cand = campaign.eligible_jobs(jobs, min_score, only_large=only_large, exclude_small=True)
     if cand.empty:
-        st.info(f"Uyum puanı %{min_score}+ olan, başvurulmamış ilan yok. Önce analiz edin veya eşiği düşürün.")
+        st.info(f"Uyum puanı %{min_score}+ olan, başvurulmamış ilan yok. Önce analiz edin, eşiği düşürün ya da ölçek filtresini genişletin.")
     else:
         all_on = st.checkbox(f"✅ Tümünü seç ({len(cand)} ilan)", key=f"bulk_all_{hash(tuple(cand['id']))}")
-        table = cand[["id", "Kaynak", "Şirket", "Pozisyon", "Şehir", "puan", "recommendation"]].rename(
+        table = cand[["id", "Kaynak", "Ölçek", "Şirket", "Pozisyon", "Şehir", "puan", "recommendation"]].rename(
             columns={"puan": "Puan", "recommendation": "Öneri"})
         table.insert(0, "Onay", all_on)
         edited = st.data_editor(table, hide_index=True, width="stretch",

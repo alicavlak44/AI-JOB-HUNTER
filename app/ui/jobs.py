@@ -5,6 +5,7 @@ import os
 import streamlit as st
 
 from ai_engine.brain import extract_positions_from_cv, AIError
+from ai_engine.company_tier import TIER_LARGE, TIER_SMALL, classify_company
 from ai_engine.cv_builder import build_tailored_cv
 from app import campaign, context, followup
 from app.logger import get_logger
@@ -156,9 +157,10 @@ def _job_detail(jobs):
 
 def _details_panel(job_id, row):
     det = txt(row.get("details"))
+    ct = classify_company(row.get("Şirket"), det, row.get("Pozisyon"))
     c1, c2 = st.columns([3, 1])
-    c1.caption(f"Kaynak: **{row['Kaynak']}** · Şehir: **{row['Şehir']}** · "
-               + (f"{len(det)} karakter detay kayıtlı" if det else "İlan detayı henüz çekilmedi"))
+    c1.caption(f"Ölçek: **{ct['badge']}** ({ct['reason']}) · Kaynak: **{row['Kaynak']}** · Şehir: **{row['Şehir']}** · "
+               + (f"{len(det)} karakter detay" if det else "İlan detayı henüz çekilmedi"))
     if c2.button("🔄 Detayı çek", key=f"det_fetch_{job_id}", width="stretch"):
         with st.spinner("İlan metni çekiliyor..."):
             url = row.get("url") or ""
@@ -214,11 +216,14 @@ def page_jobs():
         return
 
     st.subheader(f"İlanlar ({len(jobs)})")
-    f1, f2, f3 = st.columns([2, 2, 1])
+    f1, f2, f3, f4 = st.columns([1.8, 1.6, 1.2, 1])
     search_q = f1.text_input("Ara (şirket / pozisyon)", placeholder="Örn: Aselsan, Sistem, Linux")
     status_filter = f2.multiselect("Duruma göre süz", sorted(jobs["Durum"].dropna().unique()), placeholder="Tümü")
     f3.markdown("<br>", unsafe_allow_html=True)
-    if f3.button("🧹 İşlenmemişleri temizle", width="stretch"):
+    only_large = f3.checkbox("🏢 Sadece büyük/kurumsal", value=bool(context.user().get("only_large_companies")),
+                             help="Bilinen büyük/kurumsal şirketler ve büyük ölçek sinyalli ilanlar")
+    f4.markdown("<br>", unsafe_allow_html=True)
+    if f4.button("🧹 İşlenmemişleri temizle", width="stretch"):
         delete_unprocessed_jobs()
         st.rerun()
     view = jobs[jobs["Durum"].isin(status_filter)] if status_filter else jobs
@@ -228,8 +233,13 @@ def page_jobs():
                 view["Pozisyon"].fillna("").str.lower().str.contains(q_low, regex=False))
         view = view[mask]
     view = view.copy()
+    tiers = [classify_company(r.get("Şirket"), r.get("details"), r.get("Pozisyon")) for _, r in view.iterrows()]
+    view["_tier"] = [t["tier"] for t in tiers]
+    view["Ölçek"] = [t["badge"] for t in tiers]
+    if only_large:
+        view = view[view["_tier"] == TIER_LARGE]
     view["Detay"] = view["details"].fillna("").str.len().map(lambda n: "✓" if n >= 200 else "—")
-    st.dataframe(view[["id", "Kaynak", "Pozisyon", "Şirket", "Şehir", "Detay", "ATS Uyum", "Durum", "url"]], width="stretch",
+    st.dataframe(view[["id", "Kaynak", "Ölçek", "Pozisyon", "Şirket", "Şehir", "Detay", "ATS Uyum", "Durum", "url"]], width="stretch",
                  hide_index=True, height=300, column_config={"url": st.column_config.LinkColumn("İlan", display_text="Aç")})
 
     st.subheader("Seçili ilan")

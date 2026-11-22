@@ -37,7 +37,7 @@ def _live_center():
     slug = context.current()
     nb = netbot.status(slug)
     jb = jobbot.status(slug)
-    opps = jobbot.ready_opportunities(get_all_jobs())
+    opps = jobbot.ready_opportunities(get_all_jobs(), only_large=bool(context.user().get("only_large_companies")))
     n_col, n_lbl = NB_STYLE.get(nb["state"], ("gray", nb["state"]))
     j_col, j_lbl = JB_STYLE.get(jb["state"], ("gray", jb["state"]))
 

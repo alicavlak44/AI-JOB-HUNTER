@@ -34,6 +34,8 @@ def page_settings():
                              format_func=context.FIELDS.get)
         city = c3.text_input("Şehir", u.get("city", ""))
         targets = st.text_area("Aranacak pozisyonlar (her satır bir unvan)", "\n".join(u.get("targets", [])))
+        only_large = st.checkbox("🏢 Sadece büyük / kurumsal şirketlere odaklan (küçük ve riskli şirketleri ele)",
+                                 value=bool(u.get("only_large_companies")))
         new_pin = st.text_input("Yeni PIN (boş bırakırsanız değişmez; '-' yazarsanız PIN kaldırılır)", type="password")
         new_cv = st.file_uploader("Ana CV'yi değiştir (PDF)", type=["pdf"])
         st.markdown("**📝 Form cevaplarım** — başvuru formlarında sık sorulan, CV'de olmayan sorular. "
@@ -46,6 +48,7 @@ def page_settings():
         if st.form_submit_button("Kaydet", type="primary"):
             upd = dict(name=name.strip() or u["name"], field=field, city=city,
                        targets=[t.strip() for t in targets.splitlines() if t.strip()],
+                       only_large_companies=only_large,
                        form_answers={k: v.strip() for k, v in fa.items() if v.strip()})
             if new_pin and new_pin != "-" and len(new_pin) < 4:
                 st.error("PIN en az 4 hane olmalı.")

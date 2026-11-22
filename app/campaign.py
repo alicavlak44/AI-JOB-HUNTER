@@ -19,16 +19,29 @@ log = get_logger("campaign")
 POSTPONED = "Ertelendi ⏳"
 
 
-def eligible_jobs(df, min_score=AUTO_APPLY_MIN_SCORE):
-    """Analizi bitmiş, puanı yeterli, 'Başvurma' önerilmemiş ve henüz başvurulmamış ilanlar (puana göre sıralı)."""
+def eligible_jobs(df, min_score=AUTO_APPLY_MIN_SCORE, only_large=False, exclude_small=False):
+    """Analizi bitmiş, puanı yeterli, 'Başvurma' önerilmemiş ve henüz başvurulmamış ilanlar (puana göre sıralı).
+    only_large=True: yalnızca Büyük/Kurumsal şirketler; exclude_small=True: Küçük/Riskli sinyalli ilanları eler."""
     if df is None or df.empty:
         return pd.DataFrame()
+    from ai_engine.company_tier import TIER_LARGE, TIER_SMALL, classify_company
     d = df[df["Durum"] == STATUS_ANALYZED].copy()
     d["puan"] = d["ATS Uyum"].map(parse_score)
     d = d[d["puan"].notna() & (d["puan"] >= min_score)]
     # Öneri alanı boş = eski sürüm analizi (eski model her şeye yüksek puan veriyordu) → güvenilmez, alınmaz
     d = d[d["recommendation"].isin(["Başvur", "Değerlendir"])]
-    return d.sort_values("puan", ascending=False)
+    if d.empty:
+        return d
+    tiers = [classify_company(r.get("Şirket"), r.get("details"), r.get("Pozisyon")) for _, r in d.iterrows()]
+    d["olcek_tier"] = [t["tier"] for t in tiers]
+    d["Ölçek"] = [t["badge"] for t in tiers]
+    if only_large:
+        d = d[d["olcek_tier"] == TIER_LARGE]
+    elif exclude_small:
+        d = d[d["olcek_tier"] != TIER_SMALL]
+    # Büyük/Kurumsal şirketler aynı/yakın puanda öne çıksın
+    d["_large_rank"] = (d["olcek_tier"] == TIER_LARGE).astype(int)
+    return d.sort_values(["_large_rank", "puan"], ascending=[False, False]).drop(columns=["_large_rank"])
 
 
 def unanalyzed_jobs(df):
