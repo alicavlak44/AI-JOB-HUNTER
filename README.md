@@ -21,26 +21,58 @@ Yerel yapay zekâ ile çalışan iş arama asistanı: ilan bulur, CV'nize göre 
 - **Hesap koruması:** Başvuru, davet ve tarama işlemleri saatlik, günlük ve haftalık limitlerle çalışır (`app/guard.py`). Platform uyarı verirse ilgili platformdaki tüm işlemler 24 saat durur. CAPTCHA çözülmez, bot gizlenmez.
 - **Onay:** Başvuru ve davetler yalnızca sizin işaretlediğiniz öğelere gider.
 
-## Kurulum (macOS, Apple Silicon önerilir)
+## Başka Bir Bilgisayarda Çalıştırma (GitHub'dan Kurulum)
 
-1. Kurulum komutları:
-   ```bash
-   python3 -m venv venv
-   venv/bin/pip install -r requirements.txt
-   venv/bin/playwright install chromium
-   cp .env.example .env
-   ```
-2. `.env` içinde adınızı ve modeli ayarlayın.
-3. [LM Studio](https://lmstudio.ai)'yu kurun, `qwen/qwen3.5-9b` (MLX 4-bit) modelini indirin ve sunucuyu başlatın: Developer → Start server.
-4. CV'nizi `documents/Cv.pdf` olarak koyun.
-5. Tarayıcı işlemleri bilgisayardaki Google Chrome ile yapılır (giriş oturumu kalıcı profilde saklanır). Chrome yoksa
-   Playwright'ın Chromium'u kullanılır (1. adımdaki `playwright install chromium`).
-6. Arka plan botlarını panelden tek tıkla başlatıp durdurabilirsiniz (**İK Ağı → LinkedIn ağ botu**, **Toplu Başvuru → Otomatik ilan avcısı**); ikisi de `caffeinate` ile panel kapansa da çalışır ve Chrome profilini sırayla paylaşır.
-7. Uygulamayı başlatın:
-   ```bash
-   venv/bin/streamlit run app/dashboard.py
-   ```
-8. 🏠 Özet sayfasından LinkedIn ve Kariyer.net'e bir kez giriş yapın. Oturum botun kendi tarayıcı profilinde saklanır.
+Ön gereksinimler: **Git**, **Python 3.11+** ve (önerilen) **Google Chrome**. Ayrıntılı düz metin notu için [KURULUM_NOTU.txt](KURULUM_NOTU.txt) dosyasına bakabilirsiniz.
+
+### 1. Depoyu GitHub'dan indirin
+```bash
+git clone https://github.com/alicavlak44/AI-JOB-HUNTER.git
+cd AI-JOB-HUNTER
+```
+*(Git kurulu değilse GitHub sayfasından **Code → Download ZIP** ile indirip klasöre çıkarabilirsiniz; ancak ileride `git pull` ile kolayca güncellemek için `git clone` önerilir.)*
+
+### 2. Sanal ortamı kurun ve paketleri yükleyin
+
+**macOS (Terminal):**
+```bash
+python3 -m venv venv
+venv/bin/pip install -r requirements.txt
+venv/bin/playwright install chromium
+cp .env.example .env
+```
+
+**Windows (PowerShell):**
+```powershell
+python -m venv venv
+.\venv\Scripts\pip install -r requirements.txt
+.\venv\Scripts\playwright install chromium
+copy .env.example .env
+```
+*(Not: `mlx-whisper` yalnızca Apple Silicon Mac'lerde otomatik kurulur; Windows/Intel Mac'lerde atlanır ve Mülakat Provası yazılı modda sorunsuz çalışır.)*
+
+### 3. Yapay zekâ motorunu ayarlayın (`.env`)
+İki seçenekten birini seçebilirsiniz:
+- **Bulut API (her bilgisayarda hızlı çalışır — önerilen):** `.env` içinde `AI_PROVIDER=gemini` (veya `openai`, `groq`, `openrouter`) ve `LM_API_KEY=...` girin (uygulama açıldıktan sonra **Profil ve Ayarlar** sayfasından da ayarlanabilir).
+- **Yerel model (LM Studio):** [LM Studio](https://lmstudio.ai)'yu kurun, `qwen/qwen3.5-9b` modelini indirin ve **Developer → Start server** deyin (`AI_PROVIDER=local`).
+
+### 4. Uygulamayı başlatın
+
+**macOS:**
+```bash
+venv/bin/streamlit run app/dashboard.py
+```
+
+**Windows (PowerShell):**
+```powershell
+.\venv\Scripts\streamlit run app/dashboard.py
+```
+
+### 5. İlk kurulum ve güncellemeler
+- İlk açılışta kullanıcı oluşturup CV'nizi yükleyin (veya `documents/Cv.pdf` olarak koyun).
+- 🏠 **Özet** sayfasından LinkedIn ve Kariyer.net'e bir kez giriş yapın. Oturum bilgisayardaki yerel tarayıcı profilinde saklanır.
+- Arka plan botlarını panelden tek tıkla başlatıp durdurabilirsiniz (**İK Ağı → LinkedIn ağ botu**, **Toplu Başvuru → Otomatik ilan avcısı**).
+- GitHub'daki yeni güncellemeleri almak için proje klasöründe `git pull origin main` çalıştırın.
 
 ## Testler
 
@@ -50,4 +82,8 @@ venv/bin/python -m unittest discover -s tests
 
 ## Kişisel veriler
 
-`documents/`, `profiles/`, `database/*.db`, tarayıcı profili, `.env` ve loglar **git'e girmez** (`.gitignore`).
+`documents/`, `profiles/`, `database/*.db`, tarayıcı profili, `.env` ve loglar **git'e girmez** (`.gitignore`). Başka bir bilgisayara geçerken bu dosyalar güvenlik gereği taşınmaz; yeni bilgisayarda `.env` ve CV'yi ekleyip bir kez giriş yapmanız yeterlidir.
+
+## Telif Hakkı
+
+© 2026 **Ali Cavlak** tarafından yapılmıştır. Tüm telif hakları **Ali Cavlak**'a aittir. Ayrıntılar için [LICENSE](LICENSE) dosyasına bakın.

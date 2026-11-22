@@ -2,6 +2,7 @@
 
 Üst menü: 💼 İş Ara · 📄 CV Oluştur. Sağ üstte kullanıcı menüsü. Çok kullanıcılı (app/context.py).
 Çalıştırma:  venv/bin/streamlit run app/dashboard.py
+Telif hakkı: © 2026 Ali Cavlak. Tüm telif hakları Ali Cavlak'a aittir.
 """
 import os
 import sys
@@ -12,6 +13,7 @@ import streamlit as st  # noqa: E402
 
 from app import context  # noqa: E402
 from app.ui.bulk import page_bulk  # noqa: E402
+from app.ui.common import footer  # noqa: E402
 from app.ui.cv_page import page_cv  # noqa: E402
 from app.ui.interview_page import page_interview  # noqa: E402
 from app.ui.home import page_home  # noqa: E402
@@ -36,6 +38,7 @@ if st.session_state.get("user") not in users:
     st.session_state.pop("user", None)
     st.query_params.pop("u", None)
     st.navigation([st.Page(login_screen, title="Giriş", icon="🔑")], position="hidden").run()
+    footer()
     st.stop()
 
 slug = st.session_state["user"]
@@ -65,3 +68,4 @@ nav = st.navigation({
 
 user_menu(PAGES)
 nav.run()
+footer()

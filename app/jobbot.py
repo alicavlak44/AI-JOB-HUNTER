@@ -101,10 +101,13 @@ def start(slug, include_kariyernet=True, auto_cv=True, auto_sync=True):
         "JOBBOT_AUTO_CV": "1" if auto_cv else "0",
         "JOBBOT_AUTO_SYNC": "1" if auto_sync else "0",
     }
-    cmd = ["caffeinate", "-ims", sys.executable, "-u", SCRIPT]
+    cmd = (["caffeinate", "-ims", sys.executable, "-u", SCRIPT] if sys.platform == "darwin"
+           else [sys.executable, "-u", SCRIPT])
+    popen_kw = ({"start_new_session": True} if os.name != "nt"
+                else {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)})
     with open(log_path(slug), "a", encoding="utf-8") as out:
         proc = subprocess.Popen(cmd, cwd=BASE_DIR, env=env, stdout=out, stderr=subprocess.STDOUT,
-                                stdin=subprocess.DEVNULL, start_new_session=True)
+                                stdin=subprocess.DEVNULL, **popen_kw)
     write_state(slug, state="başlatılıyor", launcher_pid=proc.pid,
                 started=datetime.now().strftime("%Y-%m-%d %H:%M"),
                 options={"kariyernet": include_kariyernet, "auto_cv": auto_cv, "auto_sync": auto_sync})

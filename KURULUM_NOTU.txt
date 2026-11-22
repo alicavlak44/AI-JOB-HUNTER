@@ -1,0 +1,125 @@
+================================================================================
+KARİYER OTONOMU (AI-JOB-HUNTER) — BAŞKA BİLGİSAYARDA KURULUM VE KULLANIM NOTU
+================================================================================
+
+Geliştirici ve Hak Sahibi : Ali Cavlak
+Telif Hakkı               : © 2026 Ali Cavlak tarafından yapılmıştır.
+                            Tüm telif hakları Ali Cavlak'a aittir.
+GitHub Deposu             : https://github.com/alicavlak44/AI-JOB-HUNTER
+
+--------------------------------------------------------------------------------
+1. GEREKSİNİMLER (Yeni bilgisayarda kurulu olması gerekenler)
+--------------------------------------------------------------------------------
+- Git            : https://git-scm.com/downloads
+- Python 3.11+   : https://www.python.org/downloads/
+                   (Windows'ta kurarken "Add Python to PATH" kutusunu işaretleyin!)
+- Google Chrome  : Tarayıcı otomasyonu için önerilir (yoksa Playwright Chromium kullanır).
+
+--------------------------------------------------------------------------------
+2. GITHUB'DAN İNDİRME (Klonlama)
+--------------------------------------------------------------------------------
+Yeni bilgisayarda Terminal (macOS) veya PowerShell / Komut İstemi (Windows) açın:
+
+    git clone https://github.com/alicavlak44/AI-JOB-HUNTER.git
+    cd AI-JOB-HUNTER
+
+(Not: Depo gizli / private ise GitHub kullanıcı adı ve Personal Access Token
+veya GitHub CLI `gh auth login` ile giriş yapmanız gerekir.)
+
+Alternatif (Git kurmadan):
+GitHub sayfasında yeşil "Code" → "Download ZIP" butonuna basıp klasörü
+bilgisayara çıkartabilirsiniz. (Ancak güncellemeleri `git pull` ile tek komutta
+alabilmek için `git clone` önerilir.)
+
+--------------------------------------------------------------------------------
+3. KURULUM ADIMLARI
+--------------------------------------------------------------------------------
+
+A) macOS (Terminal):
+    python3 -m venv venv
+    venv/bin/pip install --upgrade pip
+    venv/bin/pip install -r requirements.txt
+    venv/bin/playwright install chromium
+    cp .env.example .env
+
+B) Windows (PowerShell):
+    python -m venv venv
+    .\venv\Scripts\pip install --upgrade pip
+    .\venv\Scripts\pip install -r requirements.txt
+    .\venv\Scripts\playwright install chromium
+    copy .env.example .env
+
+(Not: mlx-whisper sadece Apple Silicon Mac'lerde otomatik kurulur. Windows veya
+Intel Mac'lerde sorunsuz atlanır; Mülakat Provası yazılı olarak çalışır.)
+
+--------------------------------------------------------------------------------
+4. YAPAY ZEKÂ AYARI (.env dosyası)
+--------------------------------------------------------------------------------
+Proje klasöründeki `.env` dosyasını Not Defteri (Notepad / TextEdit) ile açın ve
+aşağıdaki iki yöntemden birini seçin:
+
+Yöntem 1 — Bulut API (Google Gemini — hızlı, her bilgisayarda çalışır):
+  1. https://aistudio.google.com/apikey adresinden API anahtarı alın.
+  2. `.env` dosyasına şu satırları yazın (veya uygulama içinde Ayarlar → Yapay Zekâ):
+       AI_PROVIDER=gemini
+       LM_STUDIO_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+       LM_MODEL=gemini-3.5-flash
+       LM_FAST_MODEL=gemini-3.5-flash-lite
+       LM_API_KEY=BURAYA_API_ANAHTARINIZ
+       CANDIDATE_NAME=Ad Soyad
+
+Yöntem 2 — Yerel Model (LM Studio — internetsiz / ücretsiz):
+  1. https://lmstudio.ai adresinden LM Studio kurun.
+  2. `qwen/qwen3.5-9b` modelini indirin ve Developer → Start Server deyin.
+  3. `.env` dosyasında `AI_PROVIDER=local` kalsın.
+
+(OpenAI, Groq ve OpenRouter da Ayarlar sayfasından seçilebilir.)
+
+--------------------------------------------------------------------------------
+5. UYGULAMAYI BAŞLATMA
+--------------------------------------------------------------------------------
+
+macOS:
+    venv/bin/streamlit run app/dashboard.py
+
+Windows (PowerShell):
+    .\venv\Scripts\streamlit run app/dashboard.py
+
+Tarayıcıda otomatik olarak http://localhost:8501 adresi açılacaktır.
+
+İlk açılışta:
+  1. Yeni kullanıcı oluşturun ve CV'nizi (PDF) yükleyin (veya `documents/Cv.pdf` koyun).
+  2. Özet sayfasından LinkedIn ve Kariyer.net'e bir kez giriş yapın.
+     (Giriş oturumu bilgisayardaki yerel profilde saklanır.)
+
+--------------------------------------------------------------------------------
+6. GÜNCELLEMELERİ ALMA (Yeni kod geldiğinde)
+--------------------------------------------------------------------------------
+Başka bilgisayarda kodu son sürüme güncellemek için proje klasöründe:
+
+    git pull origin main
+
+Eğer yeni paket eklendiyse:
+  macOS   : venv/bin/pip install -r requirements.txt
+  Windows : .\venv\Scripts\pip install -r requirements.txt
+
+--------------------------------------------------------------------------------
+7. ÖNEMLİ GÜVENLİK VE VERİ NOTU
+--------------------------------------------------------------------------------
+Aşağıdaki kişisel dosyalar güvenlik nedeniyle GitHub'a YÜKLENMEZ (.gitignore):
+  - `.env` (API anahtarlarınız)
+  - `documents/` (CV dosyalarınız)
+  - `database/*.db` (ilanlar ve başvuru geçmişi)
+  - `database/bot_profile/` ve `profiles/` (tarayıcı oturumları ve kullanıcı profilleri)
+  - `logs/` ve `reports/`
+
+Bu nedenle başka bir bilgisayara geçtiğinizde:
+  - `.env` dosyasını yeniden oluşturup API anahtarınızı girmeniz,
+  - CV'nizi tekrar yüklemeniz,
+  - LinkedIn / Kariyer.net'e bir kez tekrar giriş yapmanız gerekir.
+  - Eski bilgisayardaki başvuru geçmişini taşımak isterseniz `database/` ve
+    `profiles/` klasörlerini USB/AirDrop/bulut ile elden kopyalayabilirsiniz.
+
+================================================================================
+© 2026 Ali Cavlak tarafından yapılmıştır. Tüm telif hakları Ali Cavlak'a aittir.
+================================================================================

@@ -124,15 +124,15 @@ def page_settings():
                        form_answers={k: v.strip() for k, v in fa.items() if v.strip()})
             if new_pin and new_pin != "-" and len(new_pin) < 4:
                 st.error("PIN en az 4 hane olmalı.")
-                st.stop()
-            if new_pin:
-                upd["pin"] = None if new_pin == "-" else new_pin
-            context.update_user(context.current(), **upd)
-            if new_cv:
-                with open(os.path.join(context.user_dir(), "cv.pdf"), "wb") as f:
-                    f.write(new_cv.getvalue())
-            st.session_state.pop(f"positions_{context.current()}", None)
-            st.success("Kaydedildi.")
+            else:
+                if new_pin:
+                    upd["pin"] = None if new_pin == "-" else new_pin
+                context.update_user(context.current(), **upd)
+                if new_cv:
+                    with open(os.path.join(context.user_dir(), "cv.pdf"), "wb") as f:
+                        f.write(new_cv.getvalue())
+                st.session_state.pop(f"positions_{context.current()}", None)
+                st.success("Kaydedildi.")
 
     st.subheader("Soru hafızası")
     st.caption("Başvuru formlarında çıkan soruların SİZİN cevaplarınız. Bot aynı soruyu gördüğünde bunu kullanır "

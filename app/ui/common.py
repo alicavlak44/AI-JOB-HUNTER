@@ -1,5 +1,10 @@
-"""Sayfaların ortak yardımcıları: kısa başlık, bildirim (flash), boş değer temizleme, stil."""
+"""Sayfaların ortak yardımcıları: kısa başlık, altbilgi (telif), bildirim (flash), boş değer temizleme, stil.
+
+Copyright (c) 2026 Ali Cavlak. Tüm telif hakları Ali Cavlak'a aittir.
+"""
 import streamlit as st
+
+COPYRIGHT_TEXT = "© 2026 Ali Cavlak tarafından yapılmıştır. Tüm telif hakları Ali Cavlak'a aittir."
 
 CSS = """
 <style>
@@ -15,6 +20,8 @@ div[data-testid="stMetricValue"] {font-weight: 800; letter-spacing: -.02em;}
 h1 {letter-spacing: -.03em !important;} h2, h3, h4 {letter-spacing: -.02em;}
 .ko-over {font-size: .78rem; font-weight: 700; color: #0A66FF; margin-bottom: -.5rem;}
 div[data-testid="stVerticalBlockBorderWrapper"] {border-radius: 14px;}
+.ko-footer {margin-top: 3rem; padding: 1.1rem 0 0.5rem; border-top: 1px solid #E5E8EF;
+  text-align: center; font-size: .82rem; color: #64748B;}
 </style>
 """
 
@@ -30,6 +37,11 @@ def header(title, subtitle="", over="Kariyer Otonomu"):
     st.title(title)
     if subtitle:
         st.markdown(f"<div class='ko-sub'>{subtitle}</div>", unsafe_allow_html=True)
+
+
+def footer():
+    """Her sayfanın en altında görünen telif hakkı altbilgisi."""
+    st.markdown(f"<div class='ko-footer'>{COPYRIGHT_TEXT}</div>", unsafe_allow_html=True)
 
 
 def step(text):

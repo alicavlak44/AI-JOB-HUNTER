@@ -161,10 +161,13 @@ def start(slug):
         return False, "Bot zaten çalışıyor."
     os.makedirs(LOGS_DIR, exist_ok=True)
     env = {**os.environ, "KO_USER": slug, "KO_HEADLESS": "1", "PYTHONUNBUFFERED": "1", **LIMITS}
-    cmd = ["caffeinate", "-ims", sys.executable, "-u", SCRIPT]
+    cmd = (["caffeinate", "-ims", sys.executable, "-u", SCRIPT] if sys.platform == "darwin"
+           else [sys.executable, "-u", SCRIPT])
+    popen_kw = ({"start_new_session": True} if os.name != "nt"
+                else {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)})
     with open(log_path(slug), "a", encoding="utf-8") as out:
         proc = subprocess.Popen(cmd, cwd=BASE_DIR, env=env, stdout=out, stderr=subprocess.STDOUT,
-                                stdin=subprocess.DEVNULL, start_new_session=True)
+                                stdin=subprocess.DEVNULL, **popen_kw)
     write_state(slug, state="başlatılıyor", launcher_pid=proc.pid, started=datetime.now().strftime("%Y-%m-%d %H:%M"))
     return True, "Bot başlatıldı."
 
