@@ -27,6 +27,10 @@ _EXTRA_COLUMNS = {
     "tailored_cv_path": "TEXT",  # ilana özel üretilen CV (.docx)
     "analyzed_at": "TEXT",       # istatistik için: son analiz zamanı
     "cv_created_at": "TEXT",     # istatistik için: özel CV üretim zamanı
+    "pipeline_stage": "TEXT",    # başvuru sonrası aşama: Başvuruldu / İK Aradı / Teknik Mülakat / Teklif / Olumsuz
+    "interview_date": "TEXT",    # mülakat tarihi (YYYY-MM-DD veya YYYY-MM-DD HH:MM)
+    "notes": "TEXT",             # kullanıcı notları
+    "followed_up_at": "TEXT",    # son takip mesajı zamanı
 }
 
 
@@ -118,7 +122,8 @@ def get_all_jobs():
                    city as 'Şehir', ats_score as 'ATS Uyum', status as 'Durum',
                    golden_keywords, details, evaluation, cover_letter, hr_message,
                    missing_skills, matching_skills, match_facts, recommendation, cover_letter_path, tailored_cv_path, last_error,
-                   created_at, analyzed_at, cv_created_at, applied_at, url
+                   created_at, analyzed_at, cv_created_at, applied_at,
+                   pipeline_stage, interview_date, notes, followed_up_at, url
             FROM jobs ORDER BY id DESC
         """, conn)
 
@@ -163,6 +168,21 @@ def update_job_status(job_id, status, error=None, applied=False):
             WHERE id=?
         """, (status, error, 1 if applied else 0, job_id))
     log.info("İlan #%s durumu: %s%s", job_id, status, f" ({error})" if error else "")
+
+
+def update_job_tracking(job_id, pipeline_stage="", interview_date="", notes="", mark_followed_up=False):
+    """Başvuru sonrası CRM alanlarını (aşama, mülakat tarihi, not, takip zamanı) günceller."""
+    _ensure_db()
+    with _connect() as conn:
+        conn.execute("""
+            UPDATE jobs
+            SET pipeline_stage=?, interview_date=?, notes=?,
+                followed_up_at=CASE WHEN ? THEN datetime('now','localtime') ELSE followed_up_at END,
+                updated_at=datetime('now','localtime')
+            WHERE id=?
+        """, (pipeline_stage or "", (interview_date or "").strip(), (notes or "").strip(),
+              1 if mark_followed_up else 0, int(job_id)))
+    log.info("İlan #%s süreç takibi güncellendi: aşama=%s", job_id, pipeline_stage or "-")
 
 
 def delete_single_job(job_id):

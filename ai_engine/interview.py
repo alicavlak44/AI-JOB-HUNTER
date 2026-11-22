@@ -96,19 +96,82 @@ BANK = {
     },
 }
 
-FILLERS = ("şey", "yani", "ııı", "eee", "ıı", "hani", "işte", "falan")
-_STAR = {"durum": r"(o dönem|bir gün|sırasında|projede|çalışırken|olmuştu|vardı)",
-         "eylem": r"(\bben\b|yaptım|kurdum|çözdüm|incele|tespit ettim|başlattım|aldım|düzenledim|hazırladım)",
-         "sonuç": r"(sonuç|sonunda|böylece|azaldı|arttı|düştü|kısaldı|başarı|tamamlandı|%|\d)"}
+FILLERS = ("şey", "yani", "ııı", "eee", "ıı", "hani", "işte", "falan", "um", "uh", "like", "you know")
+_STAR = {"durum": r"(o dönem|bir gün|sırasında|projede|çalışırken|olmuştu|vardı|during|when|situation|project|while)",
+         "eylem": r"(\bben\b|yaptım|kurdum|çözdüm|incele|tespit ettim|başlattım|aldım|düzenledim|hazırladım|\bi\b|built|fixed|resolved|investigated|configured|led)",
+         "sonuç": r"(sonuç|sonunda|böylece|azaldı|arttı|düştü|kısaldı|başarı|tamamlandı|result|reduced|improved|saved|completed|%|\d)"}
+
+COMMON_EN = {
+    "intro": ("Could you briefly walk us through your background and recent experience?",
+              "Under 2 minutes, starting from current role, 2-3 quantified achievements tied to this position."),
+    "motivation": ("Why are you interested in this role and what makes you a strong fit?",
+                   "Role/company-specific motivation, concrete CV alignment, clear career trajectory."),
+    "closing": ("What are your salary expectations, and do you have any questions for us?",
+                "Clear market-based range plus 1-2 thoughtful questions about the team or first 90 days."),
+}
+
+BANK_EN = {
+    "it": {
+        "technical": [
+            ("What is a VLAN, and what is the difference between trunk and access ports?",
+             "Broadcast domain segmentation, 802.1Q tagging, access=single VLAN, trunk=multiple VLANs, real example."),
+            ("When users report 'the internet is very slow', how do you narrow down the root cause step by step?",
+             "Layered troubleshooting: scope, ping/traceroute, DNS, bandwidth, switch errors, firewall; data-driven."),
+            ("How do you troubleshoot a Group Policy Object (GPO) not applying to a user in Active Directory?",
+             "gpresult/RSoP, OU & security filtering, WMI filters, replication, gpupdate /force, event logs."),
+            ("What security principles do you follow when adding a new firewall rule?",
+             "Least privilege, narrow source/dest/port, rule order, logging, change ticket, rollback plan."),
+            ("How do you design a backup strategy and apply the 3-2-1 rule?",
+             "3 copies, 2 media, 1 offsite; restore drills, RPO/RTO, encryption, immutable copy against ransomware."),
+        ],
+        "behavioral": [
+            ("Tell me about a high-pressure production outage you resolved. What did you do and what was the outcome?",
+             "STAR: context, personal actions, quantified result (downtime, users impacted), lessons learned."),
+            ("Give an example of explaining a complex technical issue to a non-technical manager.",
+             "Plain language, business impact, options with trade-offs, final decision."),
+        ],
+    },
+    "ik": {
+        "technical": [
+            ("How do you manage an end-to-end recruitment process for a critical role?",
+             "Intake, job spec, sourcing channels, screening, competency interview, offer, onboarding, metrics."),
+            ("How do you measure and improve employee engagement?",
+             "eNPS/surveys, exit interviews, turnover tracking, action plans with manager ownership."),
+            ("What are the key elements of a fair performance review system?",
+             "Measurable goals, competencies, calibration, regular feedback, link to development/comp."),
+        ],
+        "behavioral": [
+            ("Tell me about a difficult employee or manager conflict you handled.",
+             "STAR: listening to both sides, confidentiality, evidence, fair resolution, preventive step."),
+            ("Describe a time you had to fill multiple urgent openings on a tight deadline.",
+             "Prioritization, channel mix, process speed without dropping quality bar, concrete numbers."),
+        ],
+    },
+    "genel": {
+        "technical": [
+            ("Walk me through your core responsibilities and the project where you delivered the biggest impact.",
+             "Concrete duties, tools/methods, measurable business outcome."),
+            ("How do you prioritize your work when multiple urgent requests arrive at the same time?",
+             "Impact vs urgency, stakeholder alignment, tracking method, concrete example."),
+        ],
+        "behavioral": [
+            ("Tell me about a time you worked under heavy pressure and how you handled it.",
+             "STAR structure, personal ownership, clear measurable outcome."),
+            ("Tell me about a mistake you made at work and what you learned from it.",
+             "Genuine mistake, ownership, corrective action, systemic prevention."),
+        ],
+    },
+}
 
 
 def _q(stage, question, expects, source="banka"):
     return {"stage": stage, "question": question, "expects": expects, "source": source}
 
 
-def bank_questions(field, n_tech=4, n_beh=2, offset=0):
+def bank_questions(field, n_tech=4, n_beh=2, offset=0, lang="tr"):
     """Model yoksa: alanın soru bankasından (her yeni mülakatta farklı sırayla) sorular."""
-    b = BANK.get(field) or BANK["genel"]
+    source_bank = BANK_EN if lang == "en" else BANK
+    b = source_bank.get(field) or source_bank["genel"]
     tech = [b["technical"][(offset + i) % len(b["technical"])] for i in range(min(n_tech, len(b["technical"])))]
     beh = [b["behavioral"][(offset + i) % len(b["behavioral"])] for i in range(min(n_beh, len(b["behavioral"])))]
     return [_q("technical", q, e) for q, e in tech] + [_q("behavioral", q, e) for q, e in beh]
@@ -126,17 +189,34 @@ _PLAN_SCHEMA = {
 _FIELD_NAME = {"it": "Bilgi Teknolojileri (sistem/ağ/güvenlik)", "ik": "İnsan Kaynakları", "genel": "genel"}
 
 
-def plan_interview(profile, field="genel", job_title="", job_text="", n_tech=4, n_beh=2, use_ai=True, model=None):
+def plan_interview(profile, field="genel", job_title="", job_text="", n_tech=4, n_beh=2, use_ai=True, model=None, lang="tr"):
     """Mülakat soruları: açılış + motivasyon + teknik + davranışsal + kapanış. Dönüş: (sorular, yapay_zeka_hatası)."""
     from ai_engine.cv_studio import _profile_prompt
     core, err = [], None
+    is_en = lang == "en"
     if use_ai:
         try:
             from ai_engine.brain import _chat_json, fast_model
-            system = ("Sen Türkiye'de kıdemli bir işe alım yöneticisi ve alan uzmanısın; gerçekçi bir iş mülakatı "
-                      "yapacaksın. Sorular Türkçe, kısa, tek soru işaretli ve doğal konuşma dilinde olsun. Adayın CV'sindeki "
-                      "gerçek deneyimlere atıf yapabilirsin ama adayla ilgili bilgi uydurma. Sadece istenen JSON'u döndür.")
-            user = f"""ALAN: {_FIELD_NAME.get(field, field)}
+            if is_en:
+                system = ("You are a senior hiring manager and domain specialist conducting a realistic job interview "
+                          "in English. Keep questions natural, concise, single-question. You may reference real items "
+                          "from the candidate's CV, but never fabricate candidate facts. Return only the JSON schema.")
+                user = f"""DOMAIN: {_FIELD_NAME.get(field, field)}
+ROLE: {job_title or profile.get('headline') or '-'}
+{('JOB DESCRIPTION:' + chr(10) + job_text[:2500]) if job_text else ''}
+
+CANDIDATE CV:
+{_profile_prompt(profile)}
+
+TASK: Generate {n_tech} technical and {n_beh} behavioral interview questions IN ENGLISH.
+- technical: real domain depth (concept + practical + troubleshooting/scenario), ordered easy to hard. Tie at least one to the CV.
+- behavioral: STAR format real-experience questions.
+- expects: 3-5 points a strong answer should cover (single concise sentence)."""
+            else:
+                system = ("Sen Türkiye'de kıdemli bir işe alım yöneticisi ve alan uzmanısın; gerçekçi bir iş mülakatı "
+                          "yapacaksın. Sorular Türkçe, kısa, tek soru işaretli ve doğal konuşma dilinde olsun. Adayın CV'sindeki "
+                          "gerçek deneyimlere atıf yapabilirsin ama adayla ilgili bilgi uydurma. Sadece istenen JSON'u döndür.")
+                user = f"""ALAN: {_FIELD_NAME.get(field, field)}
 POZİSYON: {job_title or profile.get('headline') or '-'}
 {('İLAN:' + chr(10) + job_text[:2500]) if job_text else ''}
 
@@ -162,32 +242,35 @@ GÖREV: {n_tech} teknik ve {n_beh} davranışsal mülakat sorusu üret.
     tech = [q for q in core if q["stage"] == "technical"][:n_tech]
     beh = [q for q in core if q["stage"] == "behavioral"][:n_beh]
     offset = int(datetime.now().strftime("%j"))
-    fill = bank_questions(field, n_tech, n_beh, offset)
+    fill = bank_questions(field, n_tech, n_beh, offset, lang=lang)
     tech += [q for q in fill if q["stage"] == "technical"][:n_tech - len(tech)]
     beh += [q for q in fill if q["stage"] == "behavioral"][:n_beh - len(beh)]
-    qs = [_q("intro", *COMMON["intro"]), _q("motivation", *COMMON["motivation"])] + tech + beh + \
-         [_q("closing", *COMMON["closing"])]
+    common = COMMON_EN if is_en else COMMON
+    qs = [_q("intro", *common["intro"]), _q("motivation", *common["motivation"])] + tech + beh + \
+         [_q("closing", *common["closing"])]
     for i, q in enumerate(qs, 1):
         q["id"] = f"Q{i}"
     return qs, err
 
 
 # ---------------------------------------------------------------- değerlendirme
-def answer_signals(question, answer):
-    """Modelden bağımsız, ölçülebilir sinyaller (karnede ve yedek puanlamada kullanılır)."""
+def answer_signals(question, answer, duration_sec=None):
+    """Modelden bağımsız, ölçülebilir sinyaller (karnede, konuşma hızında ve yedek puanlamada kullanılır)."""
     a = (answer or "").strip()
     low = a.lower()
     words = re.findall(r"\w+", low)
     fillers = sum(len(re.findall(rf"(?<!\w){re.escape(f)}(?!\w)", low)) for f in FILLERS)
     star = {k: bool(re.search(p, low)) for k, p in _STAR.items()}
+    dur = round(float(duration_sec), 1) if duration_sec and duration_sec > 0 else None
+    wpm = round(len(words) / (dur / 60.0)) if dur and dur >= 3.0 and words else None
     return {"words": len(words), "fillers": fillers, "numbers": len(re.findall(r"\d+", a)), "star": star,
             "too_short": len(words) < (25 if question["stage"] in ("behavioral", "intro") else 15),
-            "too_long": len(words) > 320}
+            "too_long": len(words) > 320, "duration_sec": dur, "wpm": wpm}
 
 
-def rule_evaluation(question, answer):
+def rule_evaluation(question, answer, duration_sec=None):
     """Model yoksa ya da cevap boşsa: sinyallerden 1-5 puan ve somut öneriler."""
-    s = answer_signals(question, answer)
+    s = answer_signals(question, answer, duration_sec=duration_sec)
     if s["words"] == 0:
         return {"score": 1, "strengths": [], "improve": ["Bu soruya cevap verilmedi."], "better": "", "followup": "",
                 "signals": s, "source": "kural"}
@@ -212,6 +295,13 @@ def rule_evaluation(question, answer):
     if s["fillers"] >= 4:
         score -= 1
         improve.append(f"Dolgu kelimeleri çok ({s['fillers']} kez 'yani/şey/eee'); kısa duraklamalar daha iyi.")
+    if s["wpm"] is not None:
+        if s["wpm"] > 175:
+            improve.append(f"Konuşma hızı yüksek ({s['wpm']} kelime/dk); biraz yavaşlayıp nefes araları verin.")
+        elif s["wpm"] < 80:
+            improve.append(f"Konuşma hızı yavaş ({s['wpm']} kelime/dk); daha akıcı bir tempo hedefleyin.")
+        else:
+            strengths.append(f"Konuşma temposu dengeli ({s['wpm']} kelime/dk).")
     return {"score": max(1, min(5, score)), "strengths": strengths, "improve": improve, "better": "", "followup": "",
             "signals": s, "source": "kural"}
 
@@ -226,15 +316,18 @@ _EVAL_SCHEMA = {
 }
 
 
-def evaluate(question, answer, profile, field="genel", job_title="", cv_text="", use_ai=True, model=None):
+def evaluate(question, answer, profile, field="genel", job_title="", cv_text="", use_ai=True, model=None,
+             lang="tr", duration_sec=None):
     """Cevabı değerlendirir: {"score" 1-5, "strengths", "improve", "better", "followup", "signals", "source"}."""
-    base = rule_evaluation(question, answer)
+    base = rule_evaluation(question, answer, duration_sec=duration_sec)
     if not use_ai or base["signals"]["words"] == 0:
         return base
     try:
         from ai_engine.brain import _chat_json, fast_model
-        system = ("Sen kıdemli bir Türk işe alım yöneticisi ve alan uzmanısın. Mülakat cevabını adil, net ve yapıcı "
-                  "değerlendir. Türkçe yaz. Adayla ilgili bilgi UYDURMA. Sadece istenen JSON'u döndür.")
+        lang_note = ("Mülakat İNGİLİZCE yapılıyor: 'better' ve 'followup' İNGİLİZCE, 'strengths' ve 'improve' TÜRKÇE yaz."
+                     if lang == "en" else "Türkçe yaz.")
+        system = (f"Sen kıdemli bir işe alım yöneticisi ve alan uzmanısın. Mülakat cevabını adil, net ve yapıcı "
+                  f"değerlendir. {lang_note} Adayla ilgili bilgi UYDURMA. Sadece istenen JSON'u döndür.")
         user = f"""ALAN: {_FIELD_NAME.get(field, field)} · POZİSYON: {job_title or profile.get('headline') or '-'}
 SORU ({STAGE_LABEL.get(question['stage'], '')}): {question['question']}
 İYİ CEVAPTA BEKLENEN: {question.get('expects') or '-'}
@@ -274,7 +367,8 @@ def report(results):
     """results: [{"question": {...}, "answer": str, "eval": {...}}] → karne."""
     done = [r for r in results if r.get("eval")]
     if not done:
-        return {"overall": 0, "by_stage": {}, "strengths": [], "improve": [], "words": 0, "fillers": 0}
+        return {"overall": 0, "by_stage": {}, "strengths": [], "improve": [], "words": 0, "fillers": 0,
+                "duration_sec": 0.0, "avg_wpm": None}
     by_stage = {}
     for r in done:
         by_stage.setdefault(STAGE_LABEL.get(r["question"]["stage"], r["question"]["stage"]), []).append(r["eval"]["score"])
@@ -286,10 +380,14 @@ def report(results):
                 count[key][s] += 1
     top = lambda key: [s for s, _ in sorted(count.get(key, {}).items(), key=lambda x: -x[1])][:4]  # noqa: E731
     avg = sum(r["eval"]["score"] for r in done) / len(done)
+    durs = [r["eval"]["signals"].get("duration_sec") for r in done if r["eval"]["signals"].get("duration_sec")]
+    wpms = [r["eval"]["signals"].get("wpm") for r in done if r["eval"]["signals"].get("wpm")]
     return {"overall": round(avg * 20), "by_stage": {k: round(sum(v) / len(v), 1) for k, v in by_stage.items()},
             "strengths": top("strengths"), "improve": top("improve"),
             "words": sum(r["eval"]["signals"]["words"] for r in done),
-            "fillers": sum(r["eval"]["signals"]["fillers"] for r in done)}
+            "fillers": sum(r["eval"]["signals"]["fillers"] for r in done),
+            "duration_sec": round(sum(durs), 1),
+            "avg_wpm": round(sum(wpms) / len(wpms)) if wpms else None}
 
 
 def _dir(slug):

@@ -6,14 +6,14 @@ import streamlit as st
 
 from ai_engine.brain import extract_positions_from_cv, AIError
 from ai_engine.cv_builder import build_tailored_cv
-from app import campaign
+from app import campaign, context, followup
 from app.logger import get_logger
-from app import context
 from app.settings import STATUS_APPLIED_VERIFIED
 from app.ui.common import header, show_flash, set_flash, msg_kind, txt
 from browser.automator import (scrape_kariyernet_browser, run_application_bot, open_linkedin_hr_hunter, choose_cv)
 from browser.scraper import scrape_linkedin_jobs, build_hr_search_url, stats_message
-from database.db_manager import get_all_jobs, delete_single_job, delete_unprocessed_jobs, set_tailored_cv
+from database.db_manager import (get_all_jobs, delete_single_job, delete_unprocessed_jobs,
+                                 set_tailored_cv, update_job_tracking)
 
 log = get_logger("ui.jobs")
 
@@ -86,6 +86,7 @@ def _job_detail(jobs):
 
     if not (txt(row["evaluation"]) or txt(row["cover_letter"])):
         st.info("Bu ilan henüz analiz edilmedi. '🧠 Analiz et' ile uyum puanını görün.")
+        _tracking_panel(int(sel), row)
         return
 
     m1, m2 = st.columns([1, 3])
@@ -99,7 +100,7 @@ def _job_detail(jobs):
         if txt(row["missing_skills"]):
             st.markdown(f"🧩 **Eksik:** {row['missing_skills']}")
 
-    t1, t2, t3, t4 = st.tabs(["📊 Değerlendirme", "✍️ Ön yazı", "🤝 İK notu", "📄 İlana özel CV"])
+    t1, t2, t3, t4, t5 = st.tabs(["📊 Değerlendirme", "✍️ Ön yazı", "🤝 İK notu", "📄 İlana özel CV", "📋 Süreç takibi"])
     with t1:
         st.write(row["evaluation"])
         if txt(row["match_facts"]):
@@ -142,6 +143,33 @@ def _job_detail(jobs):
                 st.download_button("⬇️ CV'yi indir (.docx)", fh.read(), file_name=os.path.basename(cv_path))
         if apply_cv:
             st.caption(f"📎 Başvuruda yüklenecek: **{os.path.basename(apply_cv)}**")
+    with t5:
+        _tracking_panel(int(sel), row)
+
+
+def _tracking_panel(job_id, row):
+    cur_stage = txt(row.get("pipeline_stage"))
+    stage_opts = ["(belirtilmedi)"] + followup.STAGES
+    s_idx = stage_opts.index(cur_stage) if cur_stage in stage_opts else 0
+    c1, c2 = st.columns([1.2, 1])
+    stage = c1.selectbox("Başvuru sonrası aşama", stage_opts, index=s_idx, key=f"tr_st_{job_id}")
+    iv_date = c2.text_input("Mülakat tarihi (isteğe bağlı)", value=txt(row.get("interview_date")),
+                            placeholder="2026-11-28 14:00", key=f"tr_dt_{job_id}")
+    notes = st.text_area("Notlar (görüşülen kişi, maaş beklentisi, izlenim...)", value=txt(row.get("notes")),
+                         height=90, key=f"tr_nt_{job_id}")
+    b1, b2 = st.columns(2)
+    if b1.button("💾 Süreç bilgisini kaydet", key=f"tr_sv_{job_id}", width="stretch"):
+        update_job_tracking(job_id, "" if stage == "(belirtilmedi)" else stage, iv_date, notes)
+        set_flash("detail", "success", "✅ Süreç takibi kaydedildi.")
+        st.rerun()
+    if b2.button("✉️ Takip mesajı gönderildi işaretle", key=f"tr_fu_{job_id}", width="stretch"):
+        update_job_tracking(job_id, "" if stage == "(belirtilmedi)" else stage, iv_date, notes, mark_followed_up=True)
+        set_flash("detail", "success", "✅ Takip zamanı kaydedildi.")
+        st.rerun()
+    if txt(row.get("followed_up_at")):
+        st.caption(f"Son takip: {row['followed_up_at']}")
+    with st.expander("Hazır takip mesajı taslağı (kopyalayıp LinkedIn / e-posta ile gönderin)"):
+        st.code(followup.followup_message(row["Pozisyon"], row["Şirket"], context.name()), language="text")
 
 
 def page_jobs():

@@ -34,6 +34,18 @@ def page_home():
     _connections()
 
     jobs = get_all_jobs()
+    from app import followup
+    upcoming = followup.upcoming_interviews(jobs)
+    if upcoming:
+        st.subheader("Yaklaşan mülakatlar")
+        for iv_item in upcoming[:3]:
+            c1, c2 = st.columns([3, 1])
+            c1.info(f"📅 **{iv_item['Tarih']}** · **{iv_item['Şirket']}** — {iv_item['Pozisyon']} ({iv_item['Aşama']})")
+            if c2.button("🎤 Prova yap", key=f"home_iv_{iv_item['id']}", width="stretch"):
+                st.session_state["iv_preselect_job_id"] = iv_item["id"]
+                if "interview" in st.session_state.get("_pages", {}):
+                    st.switch_page(st.session_state["_pages"]["interview"])
+
     st.subheader("Bugün")
     today = stats.summary(jobs)["today"]
     g_li, g_kn = guard.status("LinkedIn"), guard.status("Kariyer.net")
@@ -65,6 +77,12 @@ def page_home():
                 + (f" · sonraki tarama: {jb['next_run']}" if jb["running"] and jb["next_run"] else ""))
     if "bulk" in st.session_state.get("_pages", {}):
         j2.page_link(st.session_state["_pages"]["bulk"], label="Avcıyı yönet", icon=":material/smart_toy:")
+
+    due_fu = followup.due_followups(jobs)
+    if due_fu and "success" in st.session_state.get("_pages", {}):
+        f1, f2 = st.columns([3, 1])
+        f1.markdown(f"**Takip bekleyen başvurular:** {len(due_fu)} ilanda 7+ gündür dönüş yok (hazır takip mesajları oluşturuldu).")
+        f2.page_link(st.session_state["_pages"]["success"], label="Takip kuyruğu", icon=":material/mark_email_unread:")
 
     st.subheader("Başarı oranı")
     metrics = account.success_metrics()

@@ -18,6 +18,7 @@ from app.logger import get_logger
 log = get_logger("voice")
 
 TTS_VOICE = os.getenv("TTS_VOICE", "Yelda")
+TTS_VOICE_EN = os.getenv("TTS_VOICE_EN", "Samantha")
 TTS_RATE = int(os.getenv("TTS_RATE", "185"))  # kelime/dk; 175-190 doğal mülakat hızı
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "mlx-community/whisper-small-mlx")
 _TTS_CACHE = {}
@@ -27,23 +28,29 @@ class VoiceError(RuntimeError):
     pass
 
 
-def tts_available():
+def _voice_for(lang="tr"):
+    return TTS_VOICE_EN if lang == "en" else TTS_VOICE
+
+
+def tts_available(lang="tr"):
+    target = _voice_for(lang)
     try:
         out = subprocess.run(["say", "-v", "?"], capture_output=True, text=True, timeout=10).stdout
     except (OSError, subprocess.SubprocessError):
         return False
-    return any(line.split()[0] == TTS_VOICE for line in out.splitlines() if line.strip())
+    return any(line.split()[0] == target for line in out.splitlines() if line.strip())
 
 
-def speak(text):
-    """Metni Türkçe sesle okur; WAV baytları döner (aynı metin önbellekten)."""
-    key = hashlib.sha1(f"{TTS_VOICE}|{TTS_RATE}|{text}".encode()).hexdigest()
+def speak(text, lang="tr"):
+    """Metni yerel macOS sesiyle okur (tr: Yelda, en: Samantha); WAV baytları döner (aynı metin önbellekten)."""
+    voice_name = _voice_for(lang)
+    key = hashlib.sha1(f"{voice_name}|{TTS_RATE}|{text}".encode()).hexdigest()
     if key in _TTS_CACHE:
         return _TTS_CACHE[key]
     with tempfile.TemporaryDirectory() as d:
         aiff, wav = os.path.join(d, "s.aiff"), os.path.join(d, "s.wav")
         try:
-            subprocess.run(["say", "-v", TTS_VOICE, "-r", str(TTS_RATE), "-o", aiff, text], check=True, timeout=60,
+            subprocess.run(["say", "-v", voice_name, "-r", str(TTS_RATE), "-o", aiff, text], check=True, timeout=60,
                            capture_output=True)
             subprocess.run(["afconvert", "-f", "WAVE", "-d", "LEI16@22050", aiff, wav], check=True, timeout=60,
                            capture_output=True)
@@ -81,19 +88,25 @@ def wav_to_array(data: bytes):
     return audio
 
 
-def transcribe(data: bytes, prompt=""):
-    """Kaydı Türkçe yazıya çevirir. prompt: soru metni (terimleri doğru yazması için ipucu)."""
+def transcribe_with_stats(data: bytes, prompt="", language="tr"):
+    """Kaydı yazıya çevirir ve ses süresini (sn) döner: {"text": str, "duration_sec": float}."""
     if not stt_available():
         raise VoiceError("Konuşma tanıma kurulu değil: venv/bin/pip install mlx-whisper")
     import mlx_whisper
     audio = wav_to_array(data)
+    dur = round(len(audio) / 16000.0, 1)
     if len(audio) < 16000 * 0.5:
-        return ""
+        return {"text": "", "duration_sec": dur}
     try:
-        res = mlx_whisper.transcribe(audio, path_or_hf_repo=WHISPER_MODEL, language="tr",
+        res = mlx_whisper.transcribe(audio, path_or_hf_repo=WHISPER_MODEL, language=language,
                                      initial_prompt=(prompt or "")[:200] or None, fp16=True,
                                      condition_on_previous_text=False)
     except Exception as e:  # model indirilemedi / bellek vb.
         log.exception("Konuşma tanıma başarısız")
         raise VoiceError(f"Konuşma yazıya çevrilemedi: {e}") from e
-    return " ".join((res.get("text") or "").split())
+    return {"text": " ".join((res.get("text") or "").split()), "duration_sec": dur}
+
+
+def transcribe(data: bytes, prompt="", language="tr"):
+    """Kaydı yazıya çevirir. prompt: soru metni (terimleri doğru yazması için ipucu)."""
+    return transcribe_with_stats(data, prompt=prompt, language=language)["text"]

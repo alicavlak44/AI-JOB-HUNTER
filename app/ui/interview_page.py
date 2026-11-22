@@ -29,10 +29,10 @@ def _say(text, avatar=INTERVIEWER, role="assistant"):
         st.markdown(text)
 
 
-def _play(text):
-    if st.session_state.get(_k("setup"), {}).get("voice") and voice.tts_available():
+def _play(text, lang="tr"):
+    if st.session_state.get(_k("setup"), {}).get("voice") and voice.tts_available(lang=lang):
         try:
-            st.audio(voice.speak(text), format="audio/wav", autoplay=True)
+            st.audio(voice.speak(text, lang=lang), format="audio/wav", autoplay=True)
         except voice.VoiceError as e:
             st.caption(f"Ses çalınamadı: {e}")
 
@@ -75,27 +75,30 @@ def _setup():
     target = c1.selectbox("Hangi pozisyon için prova?", opt_keys, index=default_idx,
                           help="Analiz edilmiş ilanlarınızdan birini seçerseniz sorular o ilanın gereksinimlerine göre olur.")
     custom = c2.text_input("ya da unvan yazın", placeholder="Örn: Sistem Uzmanı")
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3, c4, c5 = st.columns(5)
     n_tech = c1.number_input("Teknik soru", 2, 6, 4)
     n_beh = c2.number_input("Davranışsal soru", 1, 3, 2)
-    mode = c3.segmented_control("Cevap", ["Sesli", "Yazılı"], default="Sesli" if voice.stt_available() else "Yazılı")
-    fb = c4.segmented_control("Geri bildirim", ["Her cevaptan sonra", "Sonunda"], default="Her cevaptan sonra")
+    lang_choice = c3.segmented_control("Dil", ["Türkçe", "English"], default="Türkçe")
+    mode = c4.segmented_control("Cevap", ["Sesli", "Yazılı"], default="Sesli" if voice.stt_available() else "Yazılı")
+    fb = c5.segmented_control("Geri bildirim", ["Her cevaptan sonra", "Sonunda"], default="Her cevaptan sonra")
+    lang = "en" if lang_choice == "English" else "tr"
     if mode == "Sesli" and not voice.stt_available():
         st.warning("Konuşma tanıma kurulu değil (venv/bin/pip install mlx-whisper). Şimdilik yazılı cevap verebilirsiniz.")
-    if not voice.tts_available():
-        st.caption(f"Mülakatçı sesi ({voice.TTS_VOICE}) bulunamadı; sorular yalnızca yazılı gösterilecek. "
-                   "Sistem Ayarları → Erişilebilirlik → Sesli İçerik'ten Türkçe ses ekleyebilirsiniz.")
+    if not voice.tts_available(lang=lang):
+        vname = voice.TTS_VOICE_EN if lang == "en" else voice.TTS_VOICE
+        st.caption(f"Mülakatçı sesi ({vname}) bulunamadı; sorular yalnızca yazılı gösterilecek. "
+                   "Sistem Ayarları → Erişilebilirlik → Sesli İçerik'ten ses ekleyebilirsiniz.")
     if st.button("Mülakatı başlat", type="primary", icon=":material/play_arrow:"):
         title, job_text = options[target]
         title = custom.strip() or title
         profile, cv_text = _cv()
         with st.status("Mülakatçı hazırlanıyor: CV'niz ve pozisyon okunuyor, sorular seçiliyor...", expanded=False) as box:
-            plan, err = iv.plan_interview(profile, field, title, job_text, int(n_tech), int(n_beh))
+            plan, err = iv.plan_interview(profile, field, title, job_text, int(n_tech), int(n_beh), lang=lang)
             box.update(label=f"{len(plan)} soruluk mülakat hazır", state="complete")
         if err:
             set_flash("iv", "warning", "Yerel model zamanında cevap vermedi; sorular alanınızın soru bankasından seçildi.")
         st.session_state[_k("setup")] = {"title": title or (profile.get("headline") or "Genel"), "field": field,
-                                          "voice": mode == "Sesli", "feedback_each": fb != "Sonunda",
+                                          "lang": lang, "voice": mode == "Sesli", "feedback_each": fb != "Sonunda",
                                           "cv_text": cv_text, "name": (profile.get("name") or "").split(" ")[0]}
         st.session_state[_k("plan")] = plan
         st.session_state[_k("idx")] = 0
@@ -132,7 +135,9 @@ def _setup():
 # ---------------------------------------------------------------- mülakat
 def _feedback_card(ev):
     with st.container(border=True):
-        st.markdown(f"**Puan: {ev['score']}/5**" + ("" if ev.get("source") == "yapay zekâ" else " · (kural tabanlı)"))
+        sig = ev.get("signals") or {}
+        pace = f" · {int(sig['duration_sec'])} sn ({sig['wpm']} kelime/dk)" if sig.get("duration_sec") and sig.get("wpm") else ""
+        st.markdown(f"**Puan: {ev['score']}/5**" + ("" if ev.get("source") == "yapay zekâ" else " · (kural tabanlı)") + pace)
         if ev.get("strengths"):
             st.markdown("**İyi olan:** " + " · ".join(ev["strengths"]))
         if ev.get("improve"):
@@ -144,10 +149,13 @@ def _feedback_card(ev):
 
 def _interview():
     setup, plan = st.session_state[_k("setup")], st.session_state[_k("plan")]
+    lang = setup.get("lang", "tr")
     idx, results = st.session_state[_k("idx")], st.session_state[_k("results")]
     st.progress(min(1.0, idx / len(plan)), text=f"Soru {min(idx + 1, len(plan))} / {len(plan)} · {setup['title']}")
     if idx == 0 and not results:
-        greet = (f"Merhaba {setup['name']}, hoş geldiniz. Bugün {setup['title']} pozisyonu için yaklaşık "
+        greet = (f"Hello {setup['name']}, welcome. Today we will do a {len(plan)}-question interview for the {setup['title']} role. Let's begin."
+                 if lang == "en" else
+                 f"Merhaba {setup['name']}, hoş geldiniz. Bugün {setup['title']} pozisyonu için yaklaşık "
                  f"{len(plan)} soruluk bir görüşme yapacağız. Hazırsanız başlayalım.")
         _say(greet)
     for r in results:  # geçmiş
@@ -160,18 +168,24 @@ def _interview():
         return _finish()
     q = plan[idx]
     _say(f"*{iv.STAGE_LABEL.get(q['stage'], '')}* — **{q['question']}**")
-    _play((f"Merhaba {setup['name']}. " if idx == 0 and not results else "") + q["question"])
+    prefix = (f"Hello {setup['name']}. " if lang == "en" else f"Merhaba {setup['name']}. ") if idx == 0 and not results else ""
+    _play(prefix + q["question"], lang=lang)
 
-    tkey = _k(f"tr_{idx}")
+    tkey, dkey = _k(f"tr_{idx}"), _k(f"dur_{idx}")
     if setup["voice"] and voice.stt_available():
         rec = st.audio_input("Cevabınızı kaydedin (bitince durdurun)", key=_k(f"rec_{idx}"))
         if rec is not None and st.session_state.get(_k(f"rec_done_{idx}")) != rec.file_id:
             with st.spinner("Cevabınız yazıya çevriliyor (bilgisayarınızda)..."):
                 try:
-                    st.session_state[tkey] = voice.transcribe(rec.getvalue(), prompt=q["question"])
+                    tr_res = voice.transcribe_with_stats(rec.getvalue(), prompt=q["question"], language=lang)
+                    st.session_state[tkey] = tr_res["text"]
+                    st.session_state[dkey] = tr_res["duration_sec"]
                 except voice.VoiceError as e:
                     st.error(str(e))
             st.session_state[_k(f"rec_done_{idx}")] = rec.file_id
+    dur = st.session_state.get(dkey)
+    if dur:
+        st.caption(f"⏱️ Kayıt süresi: {dur:.0f} sn")
     answer = st.text_area("Cevabınız" + (" (yazıya döküldü — gerekirse düzeltin)" if setup["voice"] else ""),
                           key=tkey, height=150, placeholder="Cevabınızı buraya yazın" if not setup["voice"] else
                           "Kayıt yaptığınızda konuşmanız buraya yazılacak")
@@ -184,10 +198,11 @@ def _interview():
         st.rerun()
     if send or skip:
         text = "" if skip else answer.strip()
-        item = {"question": q, "answer": text, "eval": None}
+        item = {"question": q, "answer": text, "duration_sec": None if skip else dur, "eval": None}
         if setup["feedback_each"]:
             with st.spinner("Mülakatçı cevabınızı değerlendiriyor..."):
-                item["eval"] = iv.evaluate(q, text, {}, setup["field"], setup["title"], setup["cv_text"])
+                item["eval"] = iv.evaluate(q, text, {}, setup["field"], setup["title"], setup["cv_text"],
+                                           lang=lang, duration_sec=item["duration_sec"])
             fu = item["eval"].get("followup")
             if fu and q["stage"] in ("technical", "behavioral") and st.session_state[_k("followups")] < 2 and text:
                 plan.insert(idx + 1, {**iv._q("followup", fu, q.get("expects", ""), "yapay zekâ"), "id": f"{q['id']}+"})
@@ -199,18 +214,22 @@ def _interview():
 
 def _finish():
     setup, results = st.session_state[_k("setup")], st.session_state[_k("results")]
+    lang = setup.get("lang", "tr")
     pending = [r for r in results if r.get("eval") is None]
     if pending:
         bar = st.progress(0.0, text="Cevaplarınız değerlendiriliyor...")
         for i, r in enumerate(pending, 1):
-            r["eval"] = iv.evaluate(r["question"], r["answer"], {}, setup["field"], setup["title"], setup["cv_text"])
+            r["eval"] = iv.evaluate(r["question"], r["answer"], {}, setup["field"], setup["title"], setup["cv_text"],
+                                    lang=lang, duration_sec=r.get("duration_sec"))
             bar.progress(i / len(pending), text=f"Değerlendiriliyor: {i}/{len(pending)}")
     rep = iv.report(results)
-    _say(f"Teşekkürler {setup['name']}, görüşmemiz burada bitti. Değerlendirmeniz aşağıda.")
-    _play(f"Teşekkürler {setup['name']}, görüşmemiz burada bitti.")
+    bye = (f"Thank you {setup['name']}, that concludes our interview."
+           if lang == "en" else f"Teşekkürler {setup['name']}, görüşmemiz burada bitti. Değerlendirmeniz aşağıda.")
+    _say(bye)
+    _play(bye, lang=lang)
     if not st.session_state.get(_k("saved")) and results:
-        iv.save_session(context.current(), {"title": setup["title"], "field": setup["field"], "report": rep,
-                                            "results": results})
+        iv.save_session(context.current(), {"title": setup["title"], "field": setup["field"], "lang": lang,
+                                            "report": rep, "results": results})
         st.session_state[_k("saved")] = True
 
     st.markdown("#### Mülakat karnesi")
@@ -227,7 +246,9 @@ def _finish():
         st.markdown("**Bir sonraki mülakat için**")
         for s in rep["improve"] or ["—"]:
             st.markdown(f"- {s}")
-    st.caption(f"Toplam {rep['words']} kelime konuştunuz; dolgu kelimesi ('yani', 'şey', 'eee'): {rep['fillers']}.")
+    pace_txt = (f" · Toplam konuşma: {int(rep['duration_sec'])} sn · Ortalama hız: {rep['avg_wpm']} kelime/dk"
+                if rep.get("avg_wpm") else "")
+    st.caption(f"Toplam {rep['words']} kelime konuştunuz; dolgu kelimesi ('yani', 'şey', 'eee'): {rep['fillers']}.{pace_txt}")
     st.markdown("#### Soru soru")
     for r in results:
         ev = r["eval"]
